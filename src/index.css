@@ -1,0 +1,23 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Inter:wght@300;400;500;600&display=swap');
+@import "tailwindcss";
+
+:root {
+  /* This creates standard utility classes like font-serif and font-sans */
+  --font-serif: "Playfair Display", "Didot", "Georgia", serif;
+  --font-sans: "Inter", "Montserrat", sans-serif;
+
+  /* This creates custom colors like text-gold-500 or bg-gold-100 */
+  --color-gold-100: #f5f2eb;
+  --color-gold-200: #e6dfd1;
+  --color-gold-500: #c5a880;
+  --color-gold-600: #b39266;
+  
+  --color-stone-950: #1c1917;
+}
+
+body {
+  background-color: #faf9f6;
+  color: var(--color-stone-950);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
