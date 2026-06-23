@@ -50,27 +50,12 @@ useEffect(() => {
 
   return (
     <div className="min-h-screen bg-[#faf9f6] text-stone-900 antialiased">
-      {/* Editorial Mini-Navbar */}
-      {/* <nav className="sticky top-0 z-50 backdrop-blur-md bg-[#faf9f6]/85 border-b border-stone-200/40 px-8 py-5 flex justify-between items-center">
-        <button 
-          onClick={onBack}
-          className="group flex items-center gap-2 cursor-pointer text-xs tracking-widest uppercase font-sans font-light text-stone-600 hover:text-stone-950 transition-colors"
-        >
-          <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
-          Back to Atelier
-        </button>
-        <h1 className="font-serif text-xl tracking-[0.3em] uppercase text-stone-950 cursor-pointer" onClick={onBack}>
-          Aura
-        </h1>
-        <div className="w-20"></div>
-      </nav> */}
-
       {/* Main Layout Container */}
       <main className="max-w-7xl w-full mx-auto px-8 py-16">
         {/* Back button link indicator */}
       <button 
         onClick={onBack}
-        className="group flex items-center gap-2 text-xs tracking-widest uppercase font-sans font-light text-stone-500 hover:text-stone-950 transition-colors mb-10 cursor-pointer"
+        className="group flex items-center gap-2 text-xs tracking-widest uppercase font-sans font-light text-stone-500 hover:text-stone-950 transition-colors mb-10 "
       >
         <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
         Back to Atelier Collection
@@ -215,7 +200,7 @@ useEffect(() => {
                 </p>
                 <button 
                   onClick={() => setIsDescExpanded(!isDescExpanded)}
-                  className="text-[11px] uppercase cursor-pointer tracking-wider text-[#c5a880] hover:text-stone-950 transition-colors font-sans font-normal block pt-1 focus:outline-none"
+                  className="text-[11px] uppercase  tracking-wider text-[#c5a880] hover:text-stone-950 transition-colors font-sans font-normal block pt-1 focus:outline-none"
                 >
                   {isDescExpanded ? 'See Less —' : 'See More +'}
                 </button>
@@ -232,13 +217,13 @@ useEffect(() => {
 
             {/* Action Buttons are placed here first */}
             <div className="flex gap-4 pt-2">
-              <button onClick={() => onAddToBag(selectedQuantity, selectedSize)} className="grow group flex items-center justify-center gap-3 bg-stone-950 text-white border border-stone-900 px-8 py-4 text-xs tracking-widest uppercase cursor-pointer hover:bg-transparent hover:text-stone-950 transition-all duration-300 shadow-sm">
+              <button onClick={() => onAddToBag(selectedQuantity, selectedSize)} className="grow group flex items-center justify-center gap-3 bg-stone-950 text-white border border-stone-900 px-8 py-4 text-xs tracking-widest uppercase  hover:bg-transparent hover:text-stone-950 transition-all duration-300 shadow-sm">
                 Acquire To Bag
               </button>
               {/* Wishlist Button... */}
               <button 
               onClick={() => onToggleWishlist(product)}
-              className={`p-4 border rounded-xs cursor-pointer transition-colors duration-300 ${
+              className={`p-4 border rounded-xs  transition-colors duration-300 ${
                 isWishlisted ? 'border-red-200 bg-red-50/40 text-red-500' : 'border-stone-200 text-stone-600 hover:text-stone-950 hover:border-stone-400'
               }`}
             >

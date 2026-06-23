@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { ArrowRight, SlidersHorizontal, Check } from 'lucide-react';
+import { ArrowRight, SlidersHorizontal } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface Product {
   id: string;
@@ -24,12 +25,17 @@ export default function CollectionList({ onSelectProduct, initialCategory, onBac
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Advanced Filter Layer Coordinates
+  // 1. Core Filtering States
   const [activeCategory, setActiveCategory] = useState<string>(initialCategory);
-  const [selectedSize, setSelectedSize] = useState<string>('All');
-  const [maxPrice, setMaxPrice] = useState<number>(3000); // Slider top cap limit
+  const [selectedPolish, setSelectedPolish] = useState<string>('All'); // New Polish Option tracker
+  const [maxPrice, setMaxPrice] = useState<number>(3000);
   const [hideOutOfStock, setHideOutOfStock] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<string>('featured');
+
+  // 2. Dropdown Accordion Toggle States (Controls which menus are open)
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(true);
+  const [isPolishDropdownOpen, setIsPolishDropdownOpen] = useState(true);
+  const [isPriceDropdownOpen, setIsPriceDropdownOpen] = useState(true);
 
   useEffect(() => {
     // Synchronize filters if user clicked an external lookbook card link
@@ -63,9 +69,10 @@ export default function CollectionList({ onSelectProduct, initialCategory, onBac
       result = result.filter(p => p.category?.toLowerCase() === activeCategory.toLowerCase());
     }
 
-    // 2. Specific Size Query Check
-    if (selectedSize !== 'All') {
-      result = result.filter(p => p.sizes?.includes(selectedSize));
+    // 2. Polish Variant Filter (New)
+    if (selectedPolish !== 'All') {
+      // Looks for exact match or checks if the product data model contains it
+      result = result.filter(p => (p as any).polish?.toLowerCase() === selectedPolish.toLowerCase());
     }
 
     // 3. Price Ceiling Limits
@@ -84,10 +91,7 @@ export default function CollectionList({ onSelectProduct, initialCategory, onBac
     }
 
     setFilteredProducts(result);
-  }, [activeCategory, selectedSize, maxPrice, hideOutOfStock, sortBy, allProducts]);
-
-  const categories = ['All', 'Rings', 'Necklaces', 'Bangles', 'Earrings'];
-  const sizeOptions = ['All', 'Standard / Adjustable', '6 (16.5mm)', '7 (17.3mm)', '8 (18.1mm)'];
+  }, [activeCategory, selectedPolish, maxPrice, hideOutOfStock, sortBy, allProducts]);
 
   return (
     <div className="max-w-7xl w-full mx-auto px-8 py-12 space-y-8">
@@ -112,7 +116,7 @@ export default function CollectionList({ onSelectProduct, initialCategory, onBac
           <select 
             value={sortBy} 
             onChange={(e) => setSortBy(e.target.value)}
-            className="bg-transparent border-none outline-none text-stone-700 cursor-pointer p-0"
+            className="bg-transparent border-none outline-none text-stone-700  p-0"
           >
             <option value="featured">Sort: Featured</option>
             <option value="price-low">Price: Low to High</option>
@@ -125,55 +129,146 @@ export default function CollectionList({ onSelectProduct, initialCategory, onBac
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
         
         {/* ==========================================
-            LEFT SIDEBAR FILTER PANEL
-            ========================================== */}
-        <aside className="lg:col-span-3 space-y-8 lg:sticky lg:top-32 bg-white p-5 border border-stone-200/50 rounded-sm">
-          
-          {/* 1. Category Types Group */}
-          <div className="space-y-3">
-            <h4 className="text-[10px] font-sans tracking-[0.2em] uppercase text-stone-400 font-medium">Jewellery Types</h4>
-            <div className="flex flex-col space-y-1">
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  className={`text-left text-xs py-1.5 px-2 rounded-xs font-sans tracking-wide transition-colors ${
-                    activeCategory === cat 
-                      ? 'bg-stone-950 text-white font-medium' 
-                      : 'text-stone-600 hover:bg-stone-50 hover:text-stone-950'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-          </div>
+    LEFT SIDEBAR FILTER DROPDOWNS
+    ========================================== */}
+        <aside className="lg:col-span-3 space-y-6 lg:sticky lg:top-32 bg-white p-5 border border-stone-200/50 rounded-sm select-none">
+  
+  {/* TOP LEVEL ACTION ROW: Header & Global Reset */}
+  <div className="flex justify-between items-center border-b border-stone-100 pb-4">
+    <h3 className="text-xs font-sans font-medium uppercase tracking-wider text-stone-900">Refine Matrix</h3>
+    <button 
+      onClick={() => {
+        setActiveCategory('All');
+        setSelectedPolish('All');
+        setMaxPrice(3000);
+        setHideOutOfStock(false);
+        setSortBy('featured');
+      }}
+      className="text-[10px] uppercase tracking-widest font-sans font-light text-amber-700/90 hover:text-stone-950 underline  transition-colors"
+    >
+      Reset All
+    </button>
+  </div>
 
-          {/* 2. Sizing Select Matrix */}
-          <div className="space-y-3 border-t border-stone-100 pt-5">
-            <h4 className="text-[10px] font-sans tracking-[0.2em] uppercase text-stone-400 font-medium">Filter by Size</h4>
-            <div className="flex flex-col space-y-1">
-              {sizeOptions.map((sz) => (
-                <button
-                  key={sz}
-                  onClick={() => setSelectedSize(sz)}
-                  className={`text-left text-xs py-1.5 px-2 rounded-xs font-sans transition-colors ${
-                    selectedSize === sz 
-                      ? 'bg-stone-100 text-stone-950 font-medium' 
-                      : 'text-stone-500 hover:text-stone-950'
-                  }`}
-                >
-                  {sz}
-                </button>
-              ))}
-            </div>
+  {/* 1. COLLAPSIBLE JEWELLERY TYPES DROPDOWN */}
+  <div className="space-y-2 overflow-hidden">
+    <button 
+      onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
+      className="w-full flex justify-between items-center py-1 text-left focus:outline-none group "
+    >
+      <h4 className="text-[10px] font-sans tracking-[0.2em] uppercase text-stone-400 font-medium group-hover:text-stone-950 transition-colors">Jewellery Types</h4>
+      <motion.span 
+        animate={{ rotate: isCategoryDropdownOpen ? 180 : 0 }}
+        transition={{ duration: 0.3, ease: [0.25, 1, 0.5, 1] }}
+        className="text-stone-400 text-[9px] inline-block origin-center"
+      >
+        ▼
+      </motion.span>
+    </button>
+    
+    <AnimatePresence initial={false}>
+      {isCategoryDropdownOpen && (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.35, ease: [0.25, 1, 0.5, 1] }}
+          className="overflow-hidden"
+        >
+          <div className="flex flex-col space-y-1 pl-1 pt-1 pb-2 max-h-48 overflow-y-auto custom-scrollbar">
+            {['All', 'Rings', 'Necklaces', 'Bangles', 'Earrings', 'Chokers', 'Anklets'].map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
+                className={`text-left text-xs py-1.5 px-2 rounded-xs font-sans tracking-wide transition-colors  ${
+                  activeCategory === cat 
+                    ? 'bg-stone-950 text-white font-medium' 
+                    : 'text-stone-600 hover:bg-stone-50 hover:text-stone-950'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
           </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </div>
 
-          {/* 3. Interactive Price Range Matrix */}
-          <div className="space-y-3 border-t border-stone-100 pt-5">
-            <div className="flex justify-between items-baseline">
-              <h4 className="text-[10px] font-sans tracking-[0.2em] uppercase text-stone-400 font-medium">Price Ceiling</h4>
-              <span className="text-xs font-sans font-medium text-stone-950">${maxPrice}</span>
+  {/* 2. COLLAPSIBLE POLISH FINISH DROPDOWN */}
+  <div className="space-y-2 border-t border-stone-100 pt-4 overflow-hidden">
+    <button 
+      onClick={() => setIsPolishDropdownOpen(!isPolishDropdownOpen)}
+      className="w-full flex justify-between items-center py-1 text-left focus:outline-none group "
+    >
+      <h4 className="text-[10px] font-sans tracking-[0.2em] uppercase text-stone-400 font-medium group-hover:text-stone-950 transition-colors">Polish Finish</h4>
+      <motion.span 
+        animate={{ rotate: isPolishDropdownOpen ? 180 : 0 }}
+        transition={{ duration: 0.3, ease: [0.25, 1, 0.5, 1] }}
+        className="text-stone-400 text-[9px] inline-block origin-center"
+      >
+        ▼
+      </motion.span>
+    </button>
+
+    <AnimatePresence initial={false}>
+      {isPolishDropdownOpen && (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.35, ease: [0.25, 1, 0.5, 1] }}
+          className="overflow-hidden"
+        >
+          <div className="flex flex-col space-y-1 pl-1 pt-1 pb-2">
+            {['All', 'Gold', 'Silver', 'Rose Gold', 'Copper', 'Oxidised'].map((polish) => (
+              <button
+                key={polish}
+                onClick={() => setSelectedPolish(polish)}
+                className={`text-left text-xs py-1.5 px-2 rounded-xs font-sans transition-colors  ${
+                  selectedPolish === polish 
+                    ? 'bg-stone-950 text-white font-medium' 
+                    : 'text-stone-600 hover:bg-stone-50 hover:text-stone-950'
+                }`}
+              >
+                {polish} Tone
+              </button>
+            ))}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </div>
+
+  {/* 3. COLLAPSIBLE PRICE SLIDER DROPDOWN */}
+  <div className="space-y-2 border-t border-stone-100 pt-4 overflow-hidden">
+    <button 
+      onClick={() => setIsPriceDropdownOpen(!isPriceDropdownOpen)}
+      className="w-full flex justify-between items-center py-1 text-left focus:outline-none group "
+    >
+      <h4 className="text-[10px] font-sans tracking-[0.2em] uppercase text-stone-400 font-medium group-hover:text-stone-950 transition-colors">Price Range</h4>
+      <motion.span 
+        animate={{ rotate: isPriceDropdownOpen ? 180 : 0 }}
+        transition={{ duration: 0.3, ease: [0.25, 1, 0.5, 1] }}
+        className="text-stone-400 text-[9px] inline-block origin-center"
+      >
+        ▼
+      </motion.span>
+    </button>
+
+    <AnimatePresence initial={false}>
+      {isPriceDropdownOpen && (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.35, ease: [0.25, 1, 0.5, 1] }}
+          className="overflow-hidden"
+        >
+          <div className="space-y-3 pl-1 pt-2 pb-2">
+            <div className="flex justify-between items-baseline font-sans text-xs text-stone-600">
+              <span>Max Ceiling:</span>
+              <span className="font-medium text-stone-950">${maxPrice}</span>
             </div>
             <input 
               type="range" 
@@ -182,27 +277,30 @@ export default function CollectionList({ onSelectProduct, initialCategory, onBac
               step="25"
               value={maxPrice} 
               onChange={(e) => setMaxPrice(Number(e.target.value))}
-              className="w-full accent-stone-950 h-1 bg-stone-100 rounded-lg cursor-pointer"
+              className="w-full accent-stone-950 h-1 bg-stone-100 rounded-lg "
             />
           </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </div>
 
-          {/* 4. Real-time Availability Flag */}
-          <div className="space-y-3 border-t border-stone-100 pt-5">
-            <h4 className="text-[10px] font-sans tracking-[0.2em] uppercase text-stone-400 font-medium">Availability</h4>
-            <label className="flex items-center gap-2.5 cursor-pointer select-none group text-xs font-sans text-stone-600 hover:text-stone-950">
-              <div className="relative w-4 h-4 border border-stone-300 rounded-xs bg-white flex items-center justify-center group-hover:border-stone-400">
-                <input 
-                  type="checkbox" 
-                  checked={hideOutOfStock}
-                  onChange={(e) => setHideOutOfStock(e.target.checked)}
-                  className="sr-only"
-                />
-                {hideOutOfStock && <Check size={10} strokeWidth={3} className="text-stone-950" />}
-              </div>
-              Hide Vault Out-of-Stock
-            </label>
-          </div>
-        </aside>
+  {/* 4. REAL-TIME AVAILABILITY FLAG */}
+  <div className="border-t border-stone-100 pt-4">
+    <label className="flex items-center gap-2.5 cursor-pointer select-none group text-xs font-sans text-stone-600 hover:text-stone-950">
+      <div className="relative w-4 h-4 border border-stone-300 rounded-xs bg-white flex items-center justify-center group-hover:border-stone-400 transition-colors">
+        <input 
+          type="checkbox" 
+          checked={hideOutOfStock}
+          onChange={(e) => setHideOutOfStock(e.target.checked)}
+          className="sr-only"
+        />
+        {hideOutOfStock && <span className="text-[10px] font-bold text-stone-950">✓</span>}
+      </div>
+      Hide Vault Out-of-Stock
+    </label>
+  </div>
+</aside>
 
         {/* ==========================================
             RIGHT CONTENT DISPLAY GRID
@@ -245,10 +343,10 @@ export default function CollectionList({ onSelectProduct, initialCategory, onBac
             <div className="py-24 text-center space-y-2 border border-dashed border-stone-200 bg-stone-50/50 rounded-sm">
               <p className="font-serif text-sm text-stone-400 italic">No inventory allocations match your active configuration state.</p>
               <button 
-                onClick={() => { setActiveCategory('All'); setSelectedSize('All'); setMaxPrice(3000); setHideOutOfStock(false); }}
-                className="text-[10px] uppercase font-sans tracking-widest text-[#c5a880] underline pt-2 block mx-auto"
+                onClick={() => { setActiveCategory('All'); setSelectedPolish('All'); setMaxPrice(3000); setHideOutOfStock(false); }}
+                className="text-[10px] uppercase font-sans tracking-widest text-[#c5a880] underline pt-2 block mx-auto "
               >
-                Clear Active Filter Filters
+                Reset Filters
               </button>
             </div>
           )}

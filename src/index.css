@@ -21,3 +21,13 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
+
+/* Custom Global Luxury Pointer Overrides */
+button, 
+a, 
+select, 
+input[type="range"],
+input[type="checkbox"] + label,
+[onClick] {
+  cursor: pointer !important;
+}

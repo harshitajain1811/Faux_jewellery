@@ -20,9 +20,10 @@ interface CartDrawerProps {
   onClose: () => void;
   cartItems: CartItem[];
   onRemoveItem: (index: number) => void;
+  onNavigateToCollection: () => void;
 }
 
-export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem }: CartDrawerProps) {
+export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, onNavigateToCollection }: CartDrawerProps) {
   // Calculate total price dynamically
   const totalPrice = cartItems.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
 
@@ -95,6 +96,14 @@ export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem }:
                   <p className="font-sans text-[10px] tracking-widest uppercase text-stone-400 max-w-xs leading-relaxed">
                     Explore our collection registries to add luxury replicas.
                   </p>
+                  {/* Premium Embedded Call-To-Action Button */}
+                <button
+                  onClick={onNavigateToCollection}
+                  className="group flex items-center justify-center gap-3 bg-stone-950 text-[#f5f2eb] w-full max-w-60 py-3.5 text-[10px] tracking-[0.2em] uppercase transition-all duration-300 border border-stone-950 hover:bg-transparent hover:text-stone-950 shadow-xs"
+                >
+                  Explore Collections
+                  <ArrowRight size={11} className="group-hover:translate-x-1 transition-transform" />
+                </button>
                 </div>
               )}
             </div>

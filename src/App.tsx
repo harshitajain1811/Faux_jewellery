@@ -68,19 +68,6 @@ function App() {
     });
   };
 
-//   if (selectedProduct) {
-//   return (
-//     <ProductDetails 
-//       product={selectedProduct} 
-//       onBack={() => setSelectedProduct(null)} 
-//       onAddToBag={(quantity, size) => {
-//         setCartItems(prev => [...prev, { product: selectedProduct, quantity, size }]);
-//         setIsCartOpen(true); // Automatically glides cart open on success!
-//       }}
-//     />
-//   );
-// }
-
   return (
     <div className="min-h-screen bg-[#faf9f6] text-stone-900 antialiased selection:bg-stone-200">
       
@@ -100,7 +87,7 @@ function App() {
         </div>
 
         <h1 
-          className="font-serif text-2xl tracking-[0.3em] uppercase text-stone-950 pl-12 cursor-pointer select-none" 
+          className="font-serif text-2xl tracking-[0.3em] uppercase text-stone-950 pl-12  select-none cursor-pointer" 
           onClick={() => {setCurrentPage('home'); setSelectedProduct(null);}}
         >
           Aura
@@ -369,7 +356,10 @@ function App() {
         </div>
       </footer>
 
-      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cartItems={cartItems} onRemoveItem={handleRemoveCartItem} />
+      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cartItems={cartItems} onRemoveItem={handleRemoveCartItem} onNavigateToCollection={() => {
+              setCurrentPage('collection'); 
+              setIsCartOpen(false);         
+            }} />
     </div>
   );
 }
