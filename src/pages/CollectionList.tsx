@@ -1,0 +1,260 @@
+import { useEffect, useState } from 'react';
+import { supabase } from '../lib/supabaseClient';
+import { ArrowRight, SlidersHorizontal, Check } from 'lucide-react';
+
+interface Product {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  main_image: string;
+  category: string;
+  sizes: string[];
+  stock: number;
+}
+
+interface CollectionListProps {
+  onSelectProduct: (product: Product) => void;
+  initialCategory: string;
+  onBack: () => void;
+}
+
+export default function CollectionList({ onSelectProduct, initialCategory, onBack }: CollectionListProps) {
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Advanced Filter Layer Coordinates
+  const [activeCategory, setActiveCategory] = useState<string>(initialCategory);
+  const [selectedSize, setSelectedSize] = useState<string>('All');
+  const [maxPrice, setMaxPrice] = useState<number>(3000); // Slider top cap limit
+  const [hideOutOfStock, setHideOutOfStock] = useState<boolean>(false);
+  const [sortBy, setSortBy] = useState<string>('featured');
+
+  useEffect(() => {
+    // Synchronize filters if user clicked an external lookbook card link
+    setActiveCategory(initialCategory);
+  }, [initialCategory]);
+
+  useEffect(() => {
+    async function fetchCompleteCatalog() {
+      try {
+        setLoading(true);
+        const { data, error } = await supabase.from('products').select('*');
+        if (!error && data) {
+          setAllProducts(data);
+          setFilteredProducts(data);
+        }
+      } catch (err) {
+        console.error("Error connecting matrix keys:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchCompleteCatalog();
+  }, []);
+
+  // Multi-tier Relational Computation Logic
+  useEffect(() => {
+    let result = [...allProducts];
+
+    // 1. Chapter Types Filter
+    if (activeCategory !== 'All') {
+      result = result.filter(p => p.category?.toLowerCase() === activeCategory.toLowerCase());
+    }
+
+    // 2. Specific Size Query Check
+    if (selectedSize !== 'All') {
+      result = result.filter(p => p.sizes?.includes(selectedSize));
+    }
+
+    // 3. Price Ceiling Limits
+    result = result.filter(p => p.price <= maxPrice);
+
+    // 4. Quantity/Availability Check
+    if (hideOutOfStock) {
+      result = result.filter(p => p.stock > 0);
+    }
+
+    // 5. Sort Bar Processing
+    if (sortBy === 'price-low') {
+      result.sort((a, b) => a.price - b.price);
+    } else if (sortBy === 'price-high') {
+      result.sort((a, b) => b.price - a.price);
+    }
+
+    setFilteredProducts(result);
+  }, [activeCategory, selectedSize, maxPrice, hideOutOfStock, sortBy, allProducts]);
+
+  const categories = ['All', 'Rings', 'Necklaces', 'Bangles', 'Earrings'];
+  const sizeOptions = ['All', 'Standard / Adjustable', '6 (16.5mm)', '7 (17.3mm)', '8 (18.1mm)'];
+
+  return (
+    <div className="max-w-7xl w-full mx-auto px-8 py-12 space-y-8">
+
+      <button 
+      onClick={onBack}
+      className="group flex items-center gap-2 text-xs tracking-widest uppercase font-sans font-light text-stone-500 hover:text-stone-950 transition-colors"
+    >
+      ← Return to Maison Atelier
+    </button>
+      
+      {/* Horizontal Top Row Summary Bar */}
+      <div className="flex justify-between items-end border-b border-stone-200/60 pb-5">
+        <div>
+          <p className="text-[10px] font-sans tracking-[0.3em] uppercase text-stone-400">Atelier Curations</p>
+          <h2 className="font-serif text-2xl uppercase tracking-widest text-stone-900 font-light mt-1">The Collection Registry</h2>
+        </div>
+        
+        {/* Isolated Sort Controller */}
+        <div className="flex items-center gap-2 border border-stone-200 bg-white px-3 py-2 rounded-xs text-xs font-sans">
+          <SlidersHorizontal size={11} className="text-stone-400" />
+          <select 
+            value={sortBy} 
+            onChange={(e) => setSortBy(e.target.value)}
+            className="bg-transparent border-none outline-none text-stone-700 cursor-pointer p-0"
+          >
+            <option value="featured">Sort: Featured</option>
+            <option value="price-low">Price: Low to High</option>
+            <option value="price-high">Price: High to Low</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Main Structural Screen Layout split */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
+        
+        {/* ==========================================
+            LEFT SIDEBAR FILTER PANEL
+            ========================================== */}
+        <aside className="lg:col-span-3 space-y-8 lg:sticky lg:top-32 bg-white p-5 border border-stone-200/50 rounded-sm">
+          
+          {/* 1. Category Types Group */}
+          <div className="space-y-3">
+            <h4 className="text-[10px] font-sans tracking-[0.2em] uppercase text-stone-400 font-medium">Jewellery Types</h4>
+            <div className="flex flex-col space-y-1">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`text-left text-xs py-1.5 px-2 rounded-xs font-sans tracking-wide transition-colors ${
+                    activeCategory === cat 
+                      ? 'bg-stone-950 text-white font-medium' 
+                      : 'text-stone-600 hover:bg-stone-50 hover:text-stone-950'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 2. Sizing Select Matrix */}
+          <div className="space-y-3 border-t border-stone-100 pt-5">
+            <h4 className="text-[10px] font-sans tracking-[0.2em] uppercase text-stone-400 font-medium">Filter by Size</h4>
+            <div className="flex flex-col space-y-1">
+              {sizeOptions.map((sz) => (
+                <button
+                  key={sz}
+                  onClick={() => setSelectedSize(sz)}
+                  className={`text-left text-xs py-1.5 px-2 rounded-xs font-sans transition-colors ${
+                    selectedSize === sz 
+                      ? 'bg-stone-100 text-stone-950 font-medium' 
+                      : 'text-stone-500 hover:text-stone-950'
+                  }`}
+                >
+                  {sz}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 3. Interactive Price Range Matrix */}
+          <div className="space-y-3 border-t border-stone-100 pt-5">
+            <div className="flex justify-between items-baseline">
+              <h4 className="text-[10px] font-sans tracking-[0.2em] uppercase text-stone-400 font-medium">Price Ceiling</h4>
+              <span className="text-xs font-sans font-medium text-stone-950">${maxPrice}</span>
+            </div>
+            <input 
+              type="range" 
+              min="50" 
+              max="3000" 
+              step="25"
+              value={maxPrice} 
+              onChange={(e) => setMaxPrice(Number(e.target.value))}
+              className="w-full accent-stone-950 h-1 bg-stone-100 rounded-lg cursor-pointer"
+            />
+          </div>
+
+          {/* 4. Real-time Availability Flag */}
+          <div className="space-y-3 border-t border-stone-100 pt-5">
+            <h4 className="text-[10px] font-sans tracking-[0.2em] uppercase text-stone-400 font-medium">Availability</h4>
+            <label className="flex items-center gap-2.5 cursor-pointer select-none group text-xs font-sans text-stone-600 hover:text-stone-950">
+              <div className="relative w-4 h-4 border border-stone-300 rounded-xs bg-white flex items-center justify-center group-hover:border-stone-400">
+                <input 
+                  type="checkbox" 
+                  checked={hideOutOfStock}
+                  onChange={(e) => setHideOutOfStock(e.target.checked)}
+                  className="sr-only"
+                />
+                {hideOutOfStock && <Check size={10} strokeWidth={3} className="text-stone-950" />}
+              </div>
+              Hide Vault Out-of-Stock
+            </label>
+          </div>
+        </aside>
+
+        {/* ==========================================
+            RIGHT CONTENT DISPLAY GRID
+            ========================================== */}
+        <div className="lg:col-span-9">
+          {loading ? (
+            <div className="py-32 text-center text-xs tracking-widest text-stone-400 uppercase font-sans animate-pulse">
+              Syncing active vault ledgers...
+            </div>
+          ) : filteredProducts.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+              {filteredProducts.map((product) => (
+                <div 
+                  key={product.id} 
+                  onClick={() => onSelectProduct(product)}
+                  className="group cursor-pointer bg-white p-3 border border-stone-200/20 hover:border-stone-200/80 shadow-xs transition-all duration-300 rounded-sm"
+                >
+                  <div className="aspect-square w-full overflow-hidden bg-stone-50 mb-3 relative">
+                    <img src={product.main_image} alt={product.name} className="w-full h-full object-cover group-hover:scale-101 transition-transform duration-500" />
+                    {product.stock === 0 && (
+                      <span className="absolute top-2 left-2 bg-stone-950/80 backdrop-blur-xs text-white text-[8px] font-sans uppercase tracking-widest px-2 py-0.5">
+                        Awaiting Casting
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-1 px-0.5">
+                    <span className="text-[9px] tracking-widest font-sans uppercase text-stone-400">{product.category}</span>
+                    <h4 className="font-serif text-sm text-stone-900 group-hover:text-[#c5a880] truncate font-light tracking-wide">{product.name}</h4>
+                    <div className="pt-2 flex justify-between items-center text-xs font-sans border-t border-stone-100 mt-2">
+                      <span className="text-stone-950 font-medium">${product.price.toLocaleString()}</span>
+                      <span className="text-[9px] tracking-wider uppercase text-stone-400 group-hover:text-stone-950 flex items-center gap-1">
+                        Acquire <ArrowRight size={10} />
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-24 text-center space-y-2 border border-dashed border-stone-200 bg-stone-50/50 rounded-sm">
+              <p className="font-serif text-sm text-stone-400 italic">No inventory allocations match your active configuration state.</p>
+              <button 
+                onClick={() => { setActiveCategory('All'); setSelectedSize('All'); setMaxPrice(3000); setHideOutOfStock(false); }}
+                className="text-[10px] uppercase font-sans tracking-widest text-[#c5a880] underline pt-2 block mx-auto"
+              >
+                Clear Active Filter Filters
+              </button>
+            </div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  );
+}
