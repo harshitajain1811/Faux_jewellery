@@ -10,7 +10,8 @@ interface Product {
   price: number;
   main_image: string;
   category: string;
-  sizes: string[];
+  size_stock?: Record<string, number>;
+  polish?: string;
 }
 
 interface ProductDetailsProps {
@@ -22,11 +23,13 @@ interface ProductDetailsProps {
 }
 
 export default function ProductDetails({ product, onBack, wishlist, onToggleWishlist, onAddToBag }: ProductDetailsProps) {
-  const [selectedQuantity, setSelectedQuantity] = useState(1);
   const isWishlisted = wishlist.some(item => item.id === product.id);
   const [isDescExpanded, setIsDescExpanded] = useState(false);
   const [similarProducts, setSimilarProducts] = useState<Product[]>([]);
-  const [selectedSize, setSelectedSize] = useState(product.sizes?.[0] || 'Standard / Adjustable');
+  const availableSizes = product.size_stock ? Object.keys(product.size_stock) : [];
+  const defaultSize = availableSizes.length === 1 && availableSizes[0] === 'One Size' ? 'One Size' : '';
+  const [selectedSize, setSelectedSize] = useState<string>(defaultSize);
+  const [selectedQuantity, setSelectedQuantity] = useState<number>(1);
 
 // Put this right inside your file component structure
 useEffect(() => {
@@ -47,6 +50,21 @@ useEffect(() => {
   }
   fetchSimilar();
 }, [product.id]); // Reload recommendations if the user switches items
+
+  const isOutOfStock = (() => {
+    if (!product.size_stock) return false;
+    
+    if (selectedSize && product.size_stock[selectedSize] !== undefined) {
+      return product.size_stock[selectedSize] <= 0;
+    }
+    
+    if (product.size_stock['One Size'] !== undefined) {
+      return product.size_stock['One Size'] <= 0;
+    }
+
+    const totalItemsCount = Object.values(product.size_stock).reduce((sum, val) => sum + val, 0);
+    return totalItemsCount <= 0;
+  })();
 
   return (
     <div className="min-h-screen bg-[#faf9f6] text-stone-900 antialiased">
@@ -119,37 +137,40 @@ useEffect(() => {
             
 
             {/* Sizing Section */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <h4 className="text-[10px] font-sans tracking-[0.25em] uppercase text-stone-400">Select Size</h4>
-                <button className="text-[10px] uppercase tracking-wider text-[#c5a880] underline font-sans font-light">Size Guide</button>
-              </div>
-              
-              <div className="flex flex-wrap gap-2">
-                {product.sizes && product.sizes.length > 0 ? (
-                  product.sizes.map((size) => (
-                    <button 
+            {availableSizes.length > 0 && availableSizes[0] !== 'One Size' && (
+            <div className="space-y-2">
+              <span className="text-[10px] font-sans uppercase tracking-widest text-stone-400 block">Select Size</span>
+              <div className="flex gap-2">
+                {availableSizes.map((size) => {
+                  const sizeStock = product.size_stock?.[size] || 0;
+                  const isSizeSoldOut = sizeStock <= 0;
+
+                  return (
+                    <button
                       key={size}
-                      onClick={() => setSelectedSize(size)} // Updates your tracking slot
-                      className={`px-3 py-2 text-xs font-sans border rounded-xs transition-colors ${
+                      type="button"
+                      onClick={() => {
+                        setSelectedSize(size);
+                        setSelectedQuantity(1); // Reset amount safely
+                      }}
+                      className={`px-4 py-2 text-xs font-sans border tracking-wide transition-all ${
                         selectedSize === size
-                          ? 'border-stone-900 bg-stone-950 text-white' // Dark active highlight state
-                          : 'border-stone-200 hover:border-stone-950 text-stone-600 hover:text-stone-950 bg-white'
+                          ? "border-stone-950 bg-stone-950 text-white"
+                          : isSizeSoldOut
+                          ? "border-stone-200 bg-stone-50 text-stone-300"
+                          : "border-stone-200 text-stone-800 hover:border-stone-950 cursor-pointer"
                       }`}
                     >
                       {size}
                     </button>
-                  ))
-                ) : (
-                  // Fallback if a database row doesn't have an explicit size list
-                  <button className="px-3 py-2 text-xs font-sans border border-stone-900 bg-stone-950 text-white rounded-xs">
-                    Standard / Adjustable
-                  </button>
-                )}
+                  );
+                })}
               </div>
             </div>
+          )}
 
             {/* Interactive Quantity Stepper */}
+            {!isOutOfStock && (
             <div className="space-y-3">
               <h4 className="text-[10px] font-sans tracking-[0.25em] uppercase text-stone-400">Quantity</h4>
               <div className="inline-flex items-center border border-stone-200 rounded-xs bg-white">
@@ -170,6 +191,7 @@ useEffect(() => {
                 </div>
               </div>
             </div>
+            )}
 
             {/* Maison Guarantees Matrix */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-stone-200/50 pt-6 text-[11px] font-sans font-light text-stone-500">
@@ -217,8 +239,21 @@ useEffect(() => {
 
             {/* Action Buttons are placed here first */}
             <div className="flex gap-4 pt-2">
-              <button onClick={() => onAddToBag(selectedQuantity, selectedSize)} className="grow group flex items-center justify-center gap-3 bg-stone-950 text-white border border-stone-900 px-8 py-4 text-xs tracking-widest uppercase  hover:bg-transparent hover:text-stone-950 transition-all duration-300 shadow-sm">
-                Acquire To Bag
+              <button 
+                type="button"
+                disabled={isOutOfStock} 
+                onClick={() => {
+                  // Safety guard: if out of stock, do absolutely nothing!
+                  if (isOutOfStock) return; 
+                  onAddToBag(selectedQuantity, selectedSize);
+                }}
+                className={`grow group flex items-center justify-center gap-3 border px-8 py-4 text-xs tracking-widest uppercase transition-all duration-300 shadow-sm ${
+                  isOutOfStock 
+                    ? "bg-stone-200 text-stone-400 border-stone-200 cursor-not-allowed" 
+                    : "bg-stone-950 text-white border-stone-900 hover:bg-transparent hover:text-stone-950 cursor-pointer"
+                }`}
+              >
+                {isOutOfStock ? "Out of Stock" : "Acquire to Bag"}
               </button>
               {/* Wishlist Button... */}
               <button 

@@ -1,4 +1,4 @@
-import { X, Trash2, ArrowRight } from 'lucide-react';
+import { X, Trash2, ArrowRight, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Product {
@@ -21,9 +21,10 @@ interface CartDrawerProps {
   cartItems: CartItem[];
   onRemoveItem: (index: number) => void;
   onNavigateToCollection: () => void;
+  onCheckoutTrigger: () => void;
 }
 
-export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, onNavigateToCollection }: CartDrawerProps) {
+export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, onNavigateToCollection, onCheckoutTrigger }: CartDrawerProps) {
   // Calculate total price dynamically
   const totalPrice = cartItems.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
 
@@ -108,32 +109,36 @@ export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, o
               )}
             </div>
 
-            {/* Bottom Transaction Summary Block */}
-            <div className="border-t border-stone-200/60 pt-4 space-y-4 bg-[#faf9f6]">
-              <div className="space-y-1.5 font-sans text-xs font-light text-stone-600">
-                <div className="flex justify-between">
-                  <span>Subtotal Matrix</span>
-                  <span className="font-medium text-stone-950">${totalPrice.toLocaleString()}</span>
+            {/* BOTTOM SECTION: Checkout Action Calculations Board */}
+          {cartItems.length > 0 && (
+            <div className="p-6 border-t border-stone-100 bg-stone-50/40 space-y-4">
+              <div className="space-y-1.5 text-xs">
+                <div className="flex justify-between text-stone-500 font-light">
+                  <span>Subtotal Allocation</span>
+                  <span className="text-stone-950 font-medium">${totalPrice.toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between text-[11px]">
-                  <span className="text-stone-400">Insured Delivery Courier</span>
-                  <span className="text-emerald-600 uppercase tracking-wider text-[9px] font-medium">Complimentary</span>
-                </div>
+                <p className="text-[10px] text-stone-400 leading-relaxed tracking-wide">
+                  Shipping logistics and regulatory surcharges are determined during secure authorization steps next.
+                </p>
               </div>
 
-              <div className="border-t border-stone-200/40 pt-3 flex justify-between items-baseline">
-                <span className="font-serif text-base uppercase tracking-wider text-stone-900 font-light">Estimated Total</span>
-                <span className="font-sans text-xl font-semibold text-stone-950">${totalPrice.toLocaleString()}</span>
+              <div className="space-y-2 pt-2">
+                <button
+                  onClick={() => {
+                    onClose();            // Step 1: Slide drawer shut smoothly
+                    onCheckoutTrigger();  // Step 2: Swap layout matrix route to 'checkout' string
+                  }}
+                  className="w-full bg-stone-950 text-white font-sans text-xs tracking-widest uppercase py-4 border border-stone-950 hover:bg-transparent hover:text-stone-950 transition-all duration-300 shadow-sm cursor-pointer"
+                >
+                  Proceed to Secure Checkout
+                </button>
+                
+                <div className="flex items-center justify-center gap-1.5 text-[9px] font-sans tracking-wider uppercase text-stone-400">
+                  <ShieldCheck size={11} className="text-stone-500" /> End-To-End TLS Encrypted Pipeline
+                </div>
               </div>
-
-              <button 
-                disabled={cartItems.length === 0}
-                className="w-full group flex items-center justify-center gap-3 bg-stone-950 text-white border border-stone-900 px-6 py-4 text-xs tracking-widest uppercase hover:bg-stone-800 disabled:bg-stone-300 disabled:border-stone-300 disabled:cursor-not-allowed transition-all duration-300 shadow-md"
-              >
-                Proceed to Secure Checkout
-                <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
-              </button>
             </div>
+          )}
           </motion.div>
         </>
       )}
