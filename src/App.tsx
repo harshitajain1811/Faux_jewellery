@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Sparkles, ArrowRight, ShoppingBag, Menu, Heart, Shield, Award, MapPin } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { Sparkles, ArrowRight, ShoppingBag, Menu, Heart, MapPin, Flame } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from './lib/supabaseClient';
 import AuthPage from './pages/AuthPage';
@@ -8,14 +8,21 @@ import ProductDetails from './pages/ProductDetails';
 import CartDrawer from './components/CartDrawer';
 import CollectionList from './pages/CollectionList';
 import Checkout from './pages/Checkout';
+import AdminDashboard from './pages/AdminDashboard';
 
 interface Product {
   id: string;
   name: string;
   description: string;
   price: number;
+  discount_rate?: number;
   main_image: string;
   category: string;
+  polish?: string;
+  is_new?: boolean;
+  is_most_selling?: boolean;
+  is_featured?: boolean;
+  created_at: string;
   size_stock?: Record<string, number>;
 }
 
@@ -27,7 +34,7 @@ interface CartItem {
 
 function App() {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  const [user, setUser] = useState<{ email: string; full_name?: string } | null>(null);
+  const [user, setUser] = useState<{id: string; email: string; full_name?: string } | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -40,11 +47,22 @@ function App() {
     setCartItems(prev => prev.filter((_, idx) => idx !== indexToRemove));
   };
   
-  const [currentPage, setCurrentPage] = useState<'home' | 'collection' | 'auth' | 'profile' | 'checkout'>('home');
+  const [currentPage, setCurrentPage] = useState<'home' | 'collection' | 'auth' | 'profile' | 'checkout' | 'admin'>('home');
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, [selectedProduct, currentPage]);
+
+  const [profileName, setProfileName] = useState<string>('');
+
+  useEffect(() => {
+    if (user?.id) {
+      supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle()
+        .then(({ data }) => {
+          if (data?.full_name) setProfileName(data.full_name);
+        });
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     const isPasswordRecoveryLink = 
@@ -55,8 +73,9 @@ function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser({ 
+          id: session.user.id || '',
           email: session.user.email || '', 
-          full_name: session.user.user_metadata?.full_name || '' 
+          full_name: profileName || '' 
         });
         
         if (isPasswordRecoveryLink) {
@@ -68,8 +87,9 @@ function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         setUser({ 
+          id: session.user.id || '' ,
           email: session.user.email || '', 
-          full_name: session.user.user_metadata?.full_name || '' 
+          full_name: profileName || ''
         });
 
         if (event === 'PASSWORD_RECOVERY' || isPasswordRecoveryLink) {
@@ -90,9 +110,9 @@ function App() {
         const { data, error } = await supabase
           .from('products')
           .select('*')
-          .limit(4);
+          .range(0, 150);
 
-        if (!error && data) setProducts(data);
+        if (!error && data) setProducts(data as Product[]);
       } catch (err) {
         console.error("Error loading showcase:", err);
       } finally {
@@ -101,6 +121,39 @@ function App() {
     }
     fetchProducts();
   }, []);
+
+  const newArrivals = useMemo(() => {
+    return [...products]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 4);
+  }, [products]);
+
+  const mostSellingProducts = useMemo(() => {
+    return products.filter(p => p.is_most_selling === true).slice(0, 4);
+  }, [products]);
+
+  const rotationShowcase = useMemo(() => {
+    if (products.length === 0) return null;
+    const items = Array.from(new Set(products.map(p => p.category).filter(Boolean)));
+    if (items.length === 0) return null;
+
+    const currentTimestamp = Date.now();
+    const cycleInterval = 7 * 24 * 60 * 60 * 1000; 
+    const fixedEpochAnchor = new Date('2026-01-01').getTime();
+    
+    const intervalsPassed = Math.floor(Math.max(0, currentTimestamp - fixedEpochAnchor) / cycleInterval);
+    const selectedCategory = items[intervalsPassed % items.length];
+    const categoryProducts = products.filter(p => p.category === selectedCategory);
+
+    const topSeller = categoryProducts.find(p => p.is_most_selling === true);
+    const computedCoverImage = topSeller ? topSeller.main_image : (categoryProducts[0]?.main_image || '');
+
+    return {
+      category: selectedCategory,
+      coverImage: computedCoverImage,
+      count: categoryProducts.length
+    };
+  }, [products]);
 
   const handleToggleWishlist = (productToToggle: Product) => {
     setWishlist(prev => {
@@ -123,17 +176,14 @@ function App() {
 
       {/* 2. STICKY EDITORIAL NAVIGATION */}
       <nav className="sticky top-0 z-50 backdrop-blur-md bg-[#faf9f6]/85 border-b border-stone-200/40 px-8 py-4 flex justify-between items-center transition-all duration-300 select-none">
-        
-        {/* LEFT SEGMENT: NAVIGATION CONTROLS */}
         <div className="flex-1 flex items-center gap-6">
           <Menu size={18} strokeWidth={1.2} className="cursor-pointer text-stone-600 hover:text-stone-950 transition-colors" />
           <div className="hidden md:flex items-center gap-6 text-[11px] tracking-[0.2em] uppercase font-sans font-light text-stone-600">
-            <span onClick={() => { setCurrentPage('collection'); setSelectedProduct(null); }} className="cursor-pointer hover:text-stone-950 transition-colors">All Collections</span>
+            <span onClick={() => { setGlobalCategoryFilter('All'); setCurrentPage('collection'); setSelectedProduct(null); }} className="cursor-pointer hover:text-stone-950 transition-colors">All Collections</span>
             <span onClick={() => { setCurrentPage('home'); setSelectedProduct(null); }} className="cursor-pointer hover:text-stone-950 transition-colors">The Maison</span>
           </div>
         </div>
 
-        {/* CENTER SEGMENT: BRAND TRADEMARK ID */}
         <h1 
           className="font-serif text-2xl tracking-[0.3em] uppercase text-stone-950 text-center cursor-pointer select-none" 
           onClick={() => { setCurrentPage('home'); setSelectedProduct(null); }}
@@ -141,9 +191,7 @@ function App() {
           Aura
         </h1>
 
-        {/* RIGHT SEGMENT: SERVICE CARD LINKS & COUNTERS */}
         <div className="flex-1 flex items-center justify-end gap-5 text-stone-600">
-          
           <div className="hidden sm:flex items-center gap-1.5 h-7 cursor-pointer hover:text-stone-950 transition-colors">
             <MapPin size={13} strokeWidth={1.3} />
             <span className="text-[10px] tracking-widest uppercase font-sans font-light pt-px">Boutiques</span>
@@ -151,52 +199,62 @@ function App() {
 
           <div className="relative flex items-center h-7">
             {user ? (
-              <div className="relative flex items-center">
+              user.email === 'harshiqatest@gmail.com' ? (
                 <button 
-                  onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-                  className="flex items-center gap-1 hover:text-stone-950 transition-colors cursor-pointer outline-none"
+                  onClick={() => setCurrentPage('admin')}
+                  className="flex items-center gap-2 text-[10px] tracking-widest uppercase font-sans font-medium text-amber-800 hover:text-stone-950 transition-colors cursor-pointer group outline-none"
+                  title="Access Atelier Management Terminal"
                 >
-                  <div className="w-6 h-6 rounded-full bg-stone-900 border border-stone-950 flex items-center justify-center text-stone-100 text-[9px] font-sans font-medium uppercase tracking-normal">
-                    {user.full_name ? user.full_name.charAt(0) : user.email.charAt(0)}
-                  </div>
-                  <span className="text-[8px] text-stone-400 scale-85">▼</span>
+                  <span className="w-2 h-2 rounded-full bg-amber-600 animate-pulse" />
+                  <span>Dashboard</span>
                 </button>
-
-                {isProfileMenuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-30" onClick={() => setIsProfileMenuOpen(false)} />
-                    <div className="absolute right-0 top-full mt-3 w-48 bg-white border border-stone-200 rounded-xs shadow-xl py-1 z-40 text-left overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
-                      <div className="px-4 py-2 border-b border-stone-100">
-                        <p className="text-[10px] font-sans tracking-wider uppercase text-stone-400">Account</p>
-                        <p className="text-xs font-sans font-medium text-stone-900 truncate mt-0.5">
-                          {user.full_name ? `Welcome, ${user.full_name}` : 'Welcome Back'}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => { setCurrentPage('profile'); setSelectedProduct(null); setIsProfileMenuOpen(false); }}
-                        className="w-full text-left px-4 py-2.5 text-xs font-sans text-stone-600 hover:bg-stone-50 hover:text-stone-950 transition-colors cursor-pointer"
-                      >
-                        My Profile Details
-                      </button>
-                      <button
-                        onClick={async () => {
-                          await supabase.auth.signOut();
-                          setUser(null);
-                          setCurrentPage('home');
-                          setSelectedProduct(null);
-                          setIsProfileMenuOpen(false);
-                        }}
-                        className="w-full text-left px-4 py-2.5 text-xs font-sans text-red-700 hover:bg-red-50/40 transition-colors cursor-pointer border-t border-stone-100"
-                      >
-                        Sign Out
-                      </button>
+              ) : (
+                <div className="relative flex items-center">
+                  <button 
+                    onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                    className="flex items-center gap-1 hover:text-stone-950 transition-colors cursor-pointer outline-none"
+                  >
+                    <div className="w-6 h-6 rounded-full bg-stone-900 border border-stone-950 flex items-center justify-center text-stone-100 text-[9px] font-sans font-medium uppercase tracking-normal">
+                      {profileName ? profileName.charAt(0) : user.email.charAt(0)}
                     </div>
-                  </>
-                )}
-              </div>
+                    <span className="text-[8px] text-stone-400 scale-85">▼</span>
+                  </button>
+
+                  {isProfileMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-30" onClick={() => setIsProfileMenuOpen(false)} />
+                      <div className="absolute right-0 top-full mt-3 w-48 bg-white border border-stone-200 rounded-xs shadow-xl py-1 z-40 text-left overflow-hidden">
+                        <div className="px-4 py-2 border-b border-stone-100">
+                          <p className="text-[10px] font-sans tracking-wider uppercase text-stone-400">Account</p>
+                          <p className="text-xs font-sans font-medium text-stone-900 truncate mt-0.5">
+                            {profileName ? `Welcome, ${profileName}` : 'Welcome Back'}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => { setCurrentPage('profile'); setIsProfileMenuOpen(false); }}
+                          className="w-full text-left px-4 py-2.5 text-xs font-sans text-stone-600 hover:bg-stone-50 hover:text-stone-950 transition-colors cursor-pointer"
+                        >
+                          My Profile Details
+                        </button>
+                        <button
+                          onClick={async () => {
+                            await supabase.auth.signOut();
+                            setUser(null);
+                            setCurrentPage('home');
+                            setIsProfileMenuOpen(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-xs font-sans text-red-700 hover:bg-red-50/40 transition-colors cursor-pointer border-t border-stone-100"
+                        >
+                          Sign Out
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )
             ) : (
               <button 
-                onClick={() => { setCurrentPage('auth'); setSelectedProduct(null); }}
+                onClick={() => setCurrentPage('auth')}
                 className="text-[10px] tracking-widest uppercase font-sans font-light hover:text-stone-950 transition-colors cursor-pointer h-full"
               >
                 Sign In
@@ -219,13 +277,10 @@ function App() {
               {cartItems.reduce((acc, item) => acc + item.quantity, 0)}
             </span>
           </div>
-
         </div>
       </nav>
       
-      {/* ==========================================
-          DYNAMIC LAYOUT INTERFACE MATRIX ROUTER
-          ========================================== */}
+      {/* DYNAMIC LAYOUT INTERFACE MATRIX ROUTER */}
       <main className="grow">
         {currentPage === 'checkout' ? (
           <Checkout 
@@ -252,7 +307,7 @@ function App() {
         ) : currentPage === 'auth' ? (
           <AuthPage 
             onAuthSuccess={(email) => {
-              setUser({ email });
+              setUser({ id: '', email });
               setCurrentPage('home');
             }}
             onBack={() => setCurrentPage('home')}
@@ -260,9 +315,16 @@ function App() {
         ) : currentPage === 'profile' ? (
           <UserProfilePage 
             user={user} 
-            onUpdateProfile={(updatedDetails) => setUser(prev => prev ? { ...prev, ...updatedDetails } : null)}
-            onBack={() => setCurrentPage('home')} 
+            onBack={(targetView?: string) => {
+              if (targetView) {
+                setCurrentPage('collection');
+              } else {
+                setCurrentPage('home');
+              }
+            }}
           />
+        ) : currentPage === 'admin' ? (
+          <AdminDashboard onBack={() => setCurrentPage('home')} />
         ) : currentPage === 'collection' ? (
           <CollectionList 
             onSelectProduct={(prod) => setSelectedProduct(prod)} 
@@ -277,7 +339,7 @@ function App() {
                 <img 
                   src="https://images.unsplash.com/photo-1617038260897-41a1f14a8ca0?w=1600&auto=format&fit=crop&q=80" 
                   alt="Minimalist Luxury Studio Backdrop" 
-                  className="w-full h-full object-cover opacity-35 transform scale-102 transition-transform duration-[10s]"
+                  className="w-full h-full object-cover opacity-35 transform scale-102"
                 />
                 <div className="absolute inset-0 bg-linear-to-r from-stone-950 via-stone-950/60 to-transparent" />
               </div>
@@ -310,144 +372,148 @@ function App() {
               </div>
             </section>
 
-            {/* 4. CURATED COLLECTIONS GRID */}
-            <section className="max-w-7xl w-full mx-auto px-8 py-24 space-y-12">
-              <div className="text-center space-y-2">
-                <p className="text-[10px] font-sans tracking-[0.3em] uppercase text-stone-400">Curated Curations</p>
-                <h3 className="font-serif text-2xl md:text-3xl uppercase tracking-widest text-stone-900 font-light">Shop by Chapter</h3>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                {[
-                  { name: 'Rings', label: 'Fine Rings', img: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=600' },
-                  { name: 'Necklaces', label: 'Collar Necklaces', img: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600' },
-                  { name: 'Earrings', label: 'Eternity Bands', img: 'https://images.unsplash.com/photo-1617038260897-41a1f14a8ca0?w=600' }
-                ].map((col, idx) => (
-                  <motion.div 
-                    key={idx} 
-                    whileHover={{ y: -6 }}
-                    transition={{ duration: 0.4, ease: "easeOut" }}
-                    onClick={() => { setGlobalCategoryFilter(col.name); setCurrentPage('collection'); }}
-                    className="relative aspect-3/4 overflow-hidden group bg-stone-100 cursor-pointer border border-stone-200/20"
-                  >
-                    <img src={col.img} alt={col.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-[1.2s] ease-out" />
-                    <div className="absolute inset-0 bg-linear-to-t from-stone-950/70 via-stone-950/0 to-transparent flex items-end p-8">
-                      <div className="w-full flex justify-between items-center text-white">
-                        <h4 className="font-serif text-lg tracking-wider uppercase font-light">{col.name}</h4>
-                        <span className="text-[10px] font-sans tracking-widest uppercase opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center gap-1">
-                          Discover <ArrowRight size={10} />
-                        </span>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </section>
-
-            {/* 5. LIVE DATABASE PORTAL SHOWCASE */}
-            <section className="bg-white border-y border-stone-200/50 py-24">
-              <div className="max-w-7xl w-full mx-auto px-8 space-y-16">
-                <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-stone-100 pb-6">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                      <p className="text-[10px] font-sans tracking-[0.3em] uppercase text-stone-400">Live Vault Registry</p>
-                    </div>
-                    <h3 className="font-serif text-3xl uppercase tracking-wider text-stone-900 font-light">Available Masterpieces</h3>
+            {/* ==========================================
+                 NEW ARRIVALS
+               ========================================== */}
+            <section className="bg-white py-24">
+              <div className="max-w-7xl w-full mx-auto px-8 space-y-12">
+                <div className="text-center space-y-2">
+                  <div className="flex items-center justify-center gap-1.5 text-[#c5a880] text-[10px] tracking-[0.3em] uppercase font-medium">
+                    <Sparkles size={10} /> Fresh From The Atelier
                   </div>
-                  <p className="font-sans text-xs text-stone-500 max-w-xs font-light tracking-wide leading-relaxed">
-                    Synchronized directly with our central vault index. Handcrafted and verified in real-time.
+                  <h3 className="font-serif text-3xl uppercase tracking-wider text-stone-900 font-light">New Arrivals</h3>
+                  <p className="text-xs text-stone-400 italic max-w-md mx-auto font-sans leading-relaxed">
+                    Discover our latest handcrafted acquisitions. Rare silhouettes forged in timeless premium finishes, straight from the master artisan's workbench.
                   </p>
                 </div>
 
                 {loading ? (
-                  <div className="py-24 text-center text-[11px] tracking-[0.25em] uppercase text-stone-400 font-sans animate-pulse">
-                    Requesting assets from secure vault ledger...
+                  <div className="py-12 text-center text-[11px] tracking-[0.25em] uppercase text-stone-400 font-sans animate-pulse">
+                    Syncing newly forged designs...
                   </div>
-                ) : products.length > 0 ? (
+                ) : newArrivals.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-                    {products.map((product) => (
-                      <div key={product.id}
-                           onClick={() => setSelectedProduct(product)} 
-                           className="group cursor-pointer bg-[#faf9f6]/20 p-3 border border-transparent hover:border-stone-200/50 hover:bg-white transition-all duration-300">
+                    {newArrivals.map((product) => (
+                      <div key={`new-${product.id}`} onClick={() => setSelectedProduct(product)} className="group cursor-pointer bg-white p-3 border border-stone-200/60 rounded-sm hover:shadow-3xs transition-all duration-300">
                         <div className="aspect-square w-full overflow-hidden bg-stone-50 mb-4 relative">
-                          <img 
-                            src={product.main_image} 
-                            alt={product.name} 
-                            className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-1000" 
-                          />
-                          <div className="absolute inset-0 bg-stone-950/5 group-hover:bg-transparent transition-colors duration-300" />
+                          <img src={product.main_image} alt={product.name} className="w-full h-full object-cover group-hover:scale-101 transition-transform duration-[0.8s]" />
                         </div>
-                        <div className="space-y-1.5 px-1">
+                        <div className="space-y-1 px-1">
                           <div className="text-[9px] tracking-[0.2em] font-sans uppercase text-stone-400">{product.category}</div>
-                          <h4 className="font-serif text-base text-stone-900 group-hover:text-[#c5a880] transition-colors truncate font-light tracking-wide">
-                            {product.name}
-                          </h4>
-                          <p className="font-sans text-xs text-stone-500 line-clamp-1 font-light tracking-wide">{product.description}</p>
-                          <div className="pt-3 flex justify-between items-center text-sm font-light font-sans border-t border-stone-100 mt-2">
+                          <h4 className="font-serif text-base text-stone-900 group-hover:text-[#c5a880] transition-colors truncate font-light tracking-wide">{product.name}</h4>
+                          <div className="pt-2 flex justify-between items-center text-xs font-sans border-t border-stone-100 mt-2">
                             <span className="text-stone-950 font-medium">${product.price.toLocaleString()}</span>
-                            <span className="text-[10px] tracking-[0.2em] uppercase text-stone-400 group-hover:text-stone-950 transition-colors flex items-center gap-1 font-normal">
-                              View Details <ArrowRight size={10} />
-                            </span>
+                            <span className="text-[9px] tracking-[0.15em] uppercase text-stone-400 group-hover:text-stone-950 flex items-center gap-1">View Details <ArrowRight size={10} /></span>
                           </div>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-12 text-xs text-stone-500">
-                    No products found in the database.
-                  </div>
+                  <div className="text-center py-12 text-xs text-stone-400">No new arrivals logged in the ledger yet.</div>
                 )}
               </div>
             </section>
 
-            {/* 6. BRAND HERITAGE / QUALITY STATEMENT */}
-            <section className="max-w-7xl w-full mx-auto px-8 py-24">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-                <div className="relative aspect-4/5 bg-stone-100 max-w-md mx-auto w-full">
-                  <img 
-                    src="https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=800&auto=format&fit=crop&q=80" 
-                    alt="Artisan Craftsmanship" 
-                    className="w-full h-full object-cover shadow-sm"
-                  />
-                </div>
-                <div className="space-y-8">
-                  <div className="space-y-3">
-                    <p className="text-[10px] font-sans tracking-[0.3em] uppercase text-stone-400">The Maison Standards</p>
-                    <h3 className="font-serif text-3xl md:text-4xl uppercase tracking-wider text-stone-900 font-light leading-snug">
-                      Consciously Cast, <br />Forever Retained
-                    </h3>
-                  </div>
-                  <p className="font-sans text-sm leading-relaxed text-stone-600 font-light tracking-wide">
-                    Every creation leaving our workshops embodies centuries of inherited bench technical intelligence. We operate solely with 100% recycled precious metals and carefully vetted conflict-free diamonds.
-                  </p>
+            {/* ==========================================
+                 7-DAY CAPSULE
+                ========================================== */}
+              {rotationShowcase && (
+                <section className="w-full bg-[#faf9f6] py-20 px-8 border-b border-stone-200/30 overflow-hidden">
+                  <div className="grid grid-cols-1 md:grid-cols-12 items-stretch min-h-120">
+                    {/* Visual Asset Block (Now on Left) */}
+                    <div className="md:col-span-7 bg-stone-50 relative overflow-hidden min-h-87.5 md:min-h-full border-b md:border-b-0 md:border-r border-stone-200/30">
+                      {rotationShowcase.coverImage ? (
+                        <img 
+                          src={rotationShowcase.coverImage} 
+                          alt="Weekly showcase thumbnail curation" 
+                          className="absolute inset-0 w-full h-full object-cover transition-transform duration-[2s] hover:scale-102" 
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-[10px] tracking-widest text-stone-300 uppercase">
+                          Awaiting Visual Media Asset
+                        </div>
+                      )}
+                    </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4">
-                    <div className="flex gap-4 items-start">
-                      <div className="p-2.5 bg-white border border-stone-200/50 rounded-xs text-stone-800">
-                        <Shield size={16} strokeWidth={1.2} />
-                      </div>
-                      <div>
-                        <h5 className="font-sans text-xs font-medium uppercase tracking-wider text-stone-900">Certified Integrity</h5>
-                        <p className="font-sans text-xs text-stone-500 mt-1 font-light leading-relaxed">Full geological passports accompanying every specimen.</p>
-                      </div>
+                  {/* Editorial Text Block (Now on Right) */}
+                  <div className="md:col-span-5 p-12 lg:p-20 space-y-6 flex flex-col justify-center bg-[#faf9f6]/40">
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-sans tracking-[0.3em] uppercase text-[#c5a880] font-semibold block">
+                        Weekly Curation Focus
+                      </span>
+                      <h3 className="font-serif text-3xl lg:text-4xl uppercase tracking-wider text-stone-950 font-light">
+                        The {rotationShowcase.category} Capsule
+                      </h3>
                     </div>
-                    <div className="flex gap-4 items-start">
-                      <div className="p-2.5 bg-white border border-stone-200/50 rounded-xs text-stone-800">
-                        <Award size={16} strokeWidth={1.2} />
-                      </div>
-                      <div>
-                        <h5 className="font-sans text-xs font-medium uppercase tracking-wider text-stone-900">Atelier Lifetime Care</h5>
-                        <p className="font-sans text-xs text-stone-500 mt-1 font-light leading-relaxed">Complimentary restoration and sizing audits globally.</p>
-                      </div>
+                    <p className="text-xs text-stone-500 leading-relaxed font-sans max-w-md">
+                      Every seven days, the Maison re-aligns its studio focal point. This week, we showcase our signature collection of bespoke <span className="text-stone-950 font-medium lowercase">{rotationShowcase.category}</span> configurations, celebrating symmetry and raw metal craftsmanship.
+                    </p>
+                    <div className="pt-2">
+                      <button 
+                        onClick={() => { setGlobalCategoryFilter(rotationShowcase.category); setCurrentPage('collection'); }}
+                        className="inline-flex items-center gap-2 text-[10px] tracking-widest uppercase text-stone-900 hover:text-[#c5a880] font-sans font-medium transition-colors border-b border-stone-950 pb-0.5"
+                      >
+                        Explore This Capsule Layout<ArrowRight size={11} />
+                      </button>
                     </div>
                   </div>
                 </div>
+              </section>
+            )}
+
+            {/* ==========================================
+                 BEST SELLING SECTION
+               ========================================== */}
+            <section className="bg-white py-24 border-t border-stone-200/40">
+              <div className="max-w-7xl w-full mx-auto px-8 space-y-12">
+                <div className="text-center space-y-2">
+                  <div className="flex items-center justify-center gap-1.5 text-amber-800 text-[10px] tracking-[0.3em] uppercase font-medium">
+                    <Flame size={10} /> Constantly Desired
+                  </div>
+                  <h3 className="font-serif text-3xl uppercase tracking-wider text-stone-900 font-light">Most Selling Masterpieces</h3>
+                  <p className="text-xs text-stone-400 italic max-w-md mx-auto font-sans leading-relaxed">
+                    The signature icons universally revered by our collectors. High-demand hallmarks that define elegance and unparalleled luxury identity.
+                  </p>
+                </div>
+
+                {loading ? (
+                  <div className="py-12 text-center text-[11px] tracking-[0.25em] uppercase text-stone-400 font-sans animate-pulse">
+                    Pulling metrics indexes from core vault records...
+                  </div>
+                ) : mostSellingProducts.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                    {mostSellingProducts.map((product) => {
+                      const hasDiscount = product.discount_rate && product.discount_rate > 0;
+                      const finalPrice = hasDiscount ? product.price * (1 - (product.discount_rate || 0) / 100) : product.price;
+
+                      return (
+                        <div key={`best-${product.id}`} onClick={() => setSelectedProduct(product)} className="group cursor-pointer bg-white p-3 border border-stone-200/60 rounded-sm hover: shadow-3xs transition-all duration-300 relative">
+                          <div className="aspect-square w-full overflow-hidden bg-stone-50 mb-4 relative">
+                            <img src={product.main_image} alt={product.name} className="w-full h-full object-cover group-hover:scale-101 transition-transform duration-[0.8s]" />
+                          </div>
+                          <div className="space-y-1 px-1">
+                            <div className="text-[9px] tracking-[0.2em] font-sans uppercase text-stone-400">{product.category}</div>
+                            <h4 className="font-serif text-base text-stone-900 group-hover:text-[#c5a880] transition-colors truncate font-light tracking-wide">{product.name}</h4>
+                            <div className="pt-2 flex justify-between items-center text-xs font-sans border-t border-stone-100 mt-2">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-stone-950 font-medium">${Math.round(finalPrice).toLocaleString()}</span>
+                                {hasDiscount ? <span className="text-[9px] text-emerald-700 bg-emerald-50 px-1 rounded-3xs">(-{product.discount_rate}%)</span> : null}
+                              </div>
+                              <span className="text-[9px] tracking-[0.15em] uppercase text-stone-400 group-hover:text-stone-950 flex items-center gap-1">View <ArrowRight size={10} /></span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-xs text-stone-400">No most selling indicators flagged across dynamic products.</div>
+                )}
               </div>
             </section>
 
-            {/* 7. MINIMAL ARCHITECTURAL NEWSLETTER PORTAL */}
+            {/* MINIMAL ARCHITECTURAL NEWSLETTER PORTAL */}
             <section className="bg-stone-950 text-[#f5f2eb] py-24 border-t border-stone-900">
               <div className="max-w-2xl mx-auto px-8 text-center space-y-6">
                 <p className="text-[10px] font-sans tracking-[0.3em] uppercase text-[#c5a880]">Atelier Invitations</p>
@@ -493,12 +559,12 @@ function App() {
         onRemoveItem={handleRemoveCartItem} 
         onNavigateToCollection={() => {
           setCurrentPage('collection'); 
-          setSelectedProduct(null); // Clear item focus state
+          setSelectedProduct(null); 
           setIsCartOpen(false);    
         }} 
         onCheckoutTrigger={() => {
           setCurrentPage('checkout');
-          setSelectedProduct(null); // Clear item focus state so checkout page displays immediately!
+          setSelectedProduct(null); 
           setIsCartOpen(false);
         }}
       />

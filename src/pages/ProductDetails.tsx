@@ -8,10 +8,15 @@ interface Product {
   name: string;
   description: string;
   price: number;
+  discount_rate?: number;
   main_image: string;
   category: string;
-  size_stock?: Record<string, number>;
   polish?: string;
+  is_new?: boolean;
+  is_most_selling?: boolean;
+  is_featured?: boolean;
+  created_at: string;
+  size_stock?: Record<string, number>;
 }
 
 interface ProductDetailsProps {
