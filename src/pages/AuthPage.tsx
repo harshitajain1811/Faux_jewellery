@@ -5,12 +5,14 @@ import { supabase } from '../lib/supabaseClient';
 
 interface AuthPageProps {
   onAuthSuccess: (email: string) => void;
-  onBack: () => void;
+  navigateToView: (
+    targetPage: "collection" | "home" | "auth" | "profile" | "checkout" | "admin" | "product-details", 
+    targetCategory?: string, targetProduct?: any, replace?: boolean) => void;
 }
 
 type AuthMode = 'signin' | 'signup' | 'emailsent' | 'forgot' | 'resetpassword';
 
-export default function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
+export default function AuthPage({ onAuthSuccess, navigateToView }: AuthPageProps) {
   const [mode, setMode] = useState<AuthMode>('signin');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -19,7 +21,8 @@ export default function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [name, setName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Catch inbound email recovery link clicks automatically
@@ -34,31 +37,57 @@ export default function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
     }
   }, []);
 
+  // Validation Protocols
+  const validateEmailFormat = (emailStr: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(emailStr);
+  };
+
   const validatePasswordStrength = (pwd: string): string | null => {
     if (pwd.length < 8) return "Password must be at least 8 characters long.";
-    if (!/[A-Z]/.test(pwd)) return "Password must contain at least one capital letter.";
+    if (!/[A-Z]/.test(pwd)) return "Password must contain at least one uppercase letter.";
     if (!/[a-z]/.test(pwd)) return "Password must contain at least one lowercase letter.";
     if (!/[0-9]/.test(pwd)) return "Password must contain at least one number.";
-    if (!/[!@#$%^&*(),.?":{}|<>_]/.test(pwd)) return "Password must contain at least one special character (like @, #, $, %).";
+    if (!/[!@#$%^&*(),.?":{}|<>_]/.test(pwd)) return "Password must contain at least one special character.";
     return null;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+
+    // Common Email check for applicable fields
+    if ((mode === 'signin' || mode === 'signup' || mode === 'forgot') && !validateEmailFormat(email)) {
+      setErrorMessage("Please enter a valid structural email address.");
+      return;
+    }
 
     try {
       setLoading(true);
 
       if (mode === 'signup') {
+        // Name validations (Must be greater than 3 characters long, i.e., <= 3 triggers error)
+        if (firstName.trim().length <= 3) {
+          throw new Error("First name must be greater than 3 characters.");
+        }
+        if (lastName.trim().length <= 3) {
+          throw new Error("Last name must be greater than 3 characters.");
+        }
+
         const passwordError = validatePasswordStrength(password);
         if (passwordError) throw new Error(passwordError);
+
+        const combinedName = `${firstName.trim()} ${lastName.trim()}`;
 
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            data: { full_name: name },
+            data: { 
+              full_name: combinedName,
+              first_name: firstName.trim(),
+              last_name: lastName.trim()
+            },
             emailRedirectTo: window.location.origin,
           }
         });
@@ -76,12 +105,13 @@ export default function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
         }
         if (data.user) {
           onAuthSuccess(data.user.user_metadata?.full_name || data.user.email || email);
+          navigateToView('home', 'All', null, true);
         }
       }
 
       else if (mode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.origin, // Sends them back to our root page to trigger the form hook
+          redirectTo: window.location.origin,
         });
         if (error) throw error;
         setErrorMessage("If your email is registered, a password reset link has been sent to your inbox.");
@@ -94,11 +124,9 @@ export default function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
         const passwordError = validatePasswordStrength(password);
         if (passwordError) throw new Error(passwordError);
 
-        // Updates password for the currently authed recovery token session
         const { error } = await supabase.auth.updateUser({ password });
         if (error) throw error;
         
-        // Log out clean to clear temporary token and move to sign in screen
         await supabase.auth.signOut();
         setMode('signin');
         setEmail('');
@@ -139,13 +167,6 @@ export default function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
 
       {/* RIGHT INPUT PANEL */}
       <div className="col-span-1 lg:col-span-6 max-w-md mx-auto w-full space-y-8">
-        
-        <button 
-          onClick={onBack}
-          className="group flex items-center gap-2 text-xs tracking-widest uppercase font-sans font-light text-stone-400 hover:text-stone-950 transition-colors cursor-pointer"
-        >
-          ← Return to Showcase
-        </button>
 
         <AnimatePresence mode="wait">
           {mode === 'emailsent' ? (
@@ -186,9 +207,15 @@ export default function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 {mode === 'signup' && (
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-sans tracking-widest uppercase text-stone-400 block">Your Full Name</label>
-                    <input type="text" required value={name} onChange={(e) => setName(e.target.value)} placeholder="E.g., Julian Sterling" className="w-full bg-white border border-stone-200 focus:border-stone-950 outline-none px-4 py-3 text-xs tracking-wide font-sans font-light transition-colors rounded-xs" />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-sans tracking-widest uppercase text-stone-400 block">First Name</label>
+                      <input type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Julian" className="w-full bg-white border border-stone-200 focus:border-stone-950 outline-none px-4 py-3 text-xs tracking-wide font-sans font-light transition-colors rounded-xs" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-sans tracking-widest uppercase text-stone-400 block">Last Name</label>
+                      <input type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Sterling" className="w-full bg-white border border-stone-200 focus:border-stone-950 outline-none px-4 py-3 text-xs tracking-wide font-sans font-light transition-colors rounded-xs" />
+                    </div>
                   </div>
                 )}
 
@@ -234,9 +261,6 @@ export default function AuthPage({ onAuthSuccess, onBack }: AuthPageProps) {
                 </button>
               </form>
 
-              {/* ==========================================
-                  CLEAN BOTTOM MENU TOGGLERS (Filtered by active view mode)
-                  ========================================== */}
               <div className="text-center pt-4 border-t border-stone-100 text-xs font-sans text-stone-500 font-light">
                 {mode === 'signin' && (
                   <p>New to our seasonal portfolios? <button onClick={() => { setMode('signup'); setErrorMessage(null); }} className="text-stone-950 font-normal underline ml-1 tracking-wide hover:text-[#c5a880] cursor-pointer transition-colors">Create an Account</button></p>

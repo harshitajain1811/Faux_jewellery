@@ -22,10 +22,10 @@ interface Product {
 interface CollectionListProps {
   onSelectProduct: (product: Product) => void;
   initialCategory: string;
-  onBack: () => void;
+  navigateToView: (targetPage: "collection" | "home" | "auth" | "profile" | "checkout" | "admin" | "product-details", targetCategory?: string, targetProduct?: any) => void;
 }
 
-export default function CollectionList({ onSelectProduct, initialCategory, onBack }: CollectionListProps) {
+export default function CollectionList({ onSelectProduct, initialCategory, navigateToView }: CollectionListProps) {
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -165,10 +165,6 @@ export default function CollectionList({ onSelectProduct, initialCategory, onBac
 
   return (
     <div className="max-w-7xl w-full mx-auto px-8 py-12 space-y-6 select-none">
-
-      <button onClick={onBack} className="group flex items-center gap-2 text-xs tracking-widest uppercase font-sans font-light text-stone-500 hover:text-stone-950 transition-colors cursor-pointer">
-        ← Return to Maison Atelier
-      </button>
 
       {/* DASHBOARD SEARCH INPUT BAR CONTAINER */}
       <div className="relative w-full bg-white border border-stone-200 rounded-xs flex items-center px-4 py-3 shadow-2xs focus-within:border-stone-950 transition-colors">
@@ -313,7 +309,7 @@ export default function CollectionList({ onSelectProduct, initialCategory, onBac
                 const finalPrice = hasDiscount ? product.price * (1 - (product.discount_rate || 0) / 100) : product.price;
 
                 return (
-                  <div key={product.id} onClick={() => onSelectProduct(product)} className="group cursor-pointer bg-white p-3 border border-stone-200/20 hover:border-stone-200/80 shadow-xs transition-all duration-300 rounded-sm relative">
+                  <div key={product.id} onClick={() => navigateToView('product-details', product.category, product)} className="group cursor-pointer bg-white p-3 border border-stone-200/20 hover:border-stone-200/80 shadow-xs transition-all duration-300 rounded-sm relative">
                     
                     {/* SYSTEM MARKETING BADGES OVERLAY LAYOUT */}
                     <div className="absolute top-5 left-5 z-10 flex flex-col gap-1 pointer-events-none">

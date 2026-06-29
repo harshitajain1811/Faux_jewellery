@@ -9,6 +9,7 @@ import CartDrawer from './components/CartDrawer';
 import CollectionList from './pages/CollectionList';
 import Checkout from './pages/Checkout';
 import AdminDashboard from './pages/AdminDashboard';
+import WishlistPage from './pages/WishlistPage';
 
 interface Product {
   id: string;
@@ -47,19 +48,21 @@ function App() {
     setCartItems(prev => prev.filter((_, idx) => idx !== indexToRemove));
   };
   
-  const [currentPage, setCurrentPage] = useState<'home' | 'collection' | 'auth' | 'profile' | 'checkout' | 'admin'>('home');
+  const [currentPage, setCurrentPage] = useState<'home' | 'collection' | 'auth' | 'profile' | 'checkout' | 'admin' | 'product-details' | 'wishlist'>('home');
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, [selectedProduct, currentPage]);
 
-  const [profileName, setProfileName] = useState<string>('');
+  const [firstName, setFirstName] = useState<string>('');
+  const [lastName, setLastName] = useState<string>('');
 
   useEffect(() => {
     if (user?.id) {
-      supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle()
+      supabase.from('profiles').select('first_name, last_name').eq('id', user.id).maybeSingle()
         .then(({ data }) => {
-          if (data?.full_name) setProfileName(data.full_name);
+          if (data?.first_name) setFirstName(data.first_name);
+          if (data?.last_name) setLastName(data.last_name);
         });
     }
   }, [user?.id]);
@@ -75,7 +78,7 @@ function App() {
         setUser({ 
           id: session.user.id || '',
           email: session.user.email || '', 
-          full_name: profileName || '' 
+          full_name: firstName + ' ' + lastName || '' 
         });
         
         if (isPasswordRecoveryLink) {
@@ -89,7 +92,7 @@ function App() {
         setUser({ 
           id: session.user.id || '' ,
           email: session.user.email || '', 
-          full_name: profileName || ''
+          full_name: firstName + ' ' + lastName || ''
         });
 
         if (event === 'PASSWORD_RECOVERY' || isPasswordRecoveryLink) {
@@ -155,16 +158,152 @@ function App() {
     };
   }, [products]);
 
-  const handleToggleWishlist = (productToToggle: Product) => {
-    setWishlist(prev => {
-      const exists = prev.some(item => item.id === productToToggle.id);
-      if (exists) {
-        return prev.filter(item => item.id !== productToToggle.id);
-      } else {
-        return [...prev, productToToggle];
+  // const handleToggleWishlist = (productToToggle: Product) => {
+  //   setWishlist(prev => {
+  //     const exists = prev.some(item => item.id === productToToggle.id);
+  //     if (exists) {
+  //       return prev.filter(item => item.id !== productToToggle.id);
+  //     } else {
+  //       return [...prev, productToToggle];
+  //     }
+  //   });
+  // };
+
+  const handleToggleWishlist = async (product: Product) => {
+  if (!user?.id) return;
+
+  const isAlreadyWishlisted = wishlist.some(item => item.id === product.id);
+
+  try {
+    if (isAlreadyWishlisted) {
+      // 1. Immediately update UI state for a snappy experience
+      setWishlist(prev => prev.filter(item => item.id !== product.id));
+
+      await supabase
+        .from('user_wishlists')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('product_id', product.id);
+        
+    } else {
+      // 1. Immediately update UI state for a snappy experience
+      setWishlist(prev => [...prev, product]);
+
+      await supabase
+        .from('user_wishlists')
+        .upsert({
+          user_id: user.id,
+          product_id: product.id
+        }, { onConflict: 'user_id,product_id' });
+    }
+  } catch (dbError) {
+    console.error("Failed to sync wishlist action to cloud network metrics:", dbError);
+  }
+};
+
+  // SYNC RECOVERY HOOK (Run immediately when a user signs in)
+useEffect(() => {
+  async function loadSavedUserData() {
+    if (!user?.id) return;
+
+    try {
+      // 1. Fetch saved Cart items with nested Product data
+      const { data: savedCart, error: cartErr } = await supabase
+        .from('user_carts')
+        .select('quantity, size, product:products(*)')
+        .eq('user_id', user.id);
+
+      if (!cartErr && savedCart && savedCart.length > 0) {
+        const formattedCart: CartItem[] = savedCart.map(item => {
+          const productData = Array.isArray(item.product) ? item.product[0] : item.product;
+          
+          return {
+            product: productData as Product, // Casts directly to your internal Product interface
+            quantity: Number(item.quantity),
+            size: item.size || 'Universal Size'
+          };
+        });
+        setCartItems(formattedCart); // Overwrite/hydrate local side-panel cart state
       }
-    });
+
+      // 2. Fetch saved Wishlist records
+      const { data: savedWish, error: wishErr } = await supabase
+        .from('user_wishlists')
+        .select('product:products(*)');
+
+      if (!wishErr && savedWish) {
+        // Collect product IDs into an array to activate local Heart state fills
+        const fullWishlistProducts: Product[] = savedWish
+        .map(w => (Array.isArray(w.product) ? w.product[0] : w.product))
+        .filter(Boolean) as Product[]; 
+        setWishlist(fullWishlistProducts); 
+      }
+    } catch (err) {
+      console.error("Failed to restore cloud user state metrics:", err);
+    }
+  }
+
+  loadSavedUserData();
+}, [user?.id]);
+
+  // 1. INITIAL SETUP: Seed the first history state when the app boots up
+useEffect(() => {
+  if (!window.history.state) {
+    window.history.replaceState({ page: currentPage, category: globalCategoryFilter, productId: selectedProduct?.id }, '', '');
+  }
+}, []);
+
+// 2. INTERCEPT ENGINE: Listen for the user hitting the browser's back/forward buttons
+useEffect(() => {
+  const handleHardwareNavigation = (event: PopStateEvent) => {
+    if (event.state) {
+      const { page, category, productId } = event.state;
+      
+      // Restore the historical page position smoothly
+      setCurrentPage(page || 'home');
+      setGlobalCategoryFilter(category || 'All');
+      
+      // If we are backing into a specific product detail look, find it in your local cache/state
+      if (productId) {
+        const foundProd = products.find(p => p.id === productId); // Replace with your master products array variable
+        setSelectedProduct(foundProd || null);
+      } else {
+        setSelectedProduct(null);
+      }
+    } else {
+      // Baseline safety catch-all
+      setCurrentPage('home');
+      setGlobalCategoryFilter('All');
+      setSelectedProduct(null);
+    }
   };
+
+  window.addEventListener('popstate', handleHardwareNavigation);
+  return () => window.removeEventListener('popstate', handleHardwareNavigation);
+}, [products]); // Make sure this array dependency matches your data loading variable name
+
+// 3. SYNCHRONIZATION POINT: Whenever your code changes views via clicks, log a checkpoint
+const navigateToView = (
+  targetPage: "collection" | "home" | "auth" | "profile" | "checkout" | "admin" | "product-details" | "wishlist", 
+  targetCategory: string = 'All', targetProduct: any = null, replace: boolean = false) => {
+  setCurrentPage(targetPage);
+  setGlobalCategoryFilter(targetCategory);
+  setSelectedProduct(targetProduct);
+  
+  const stateBlueprint = { 
+    page: targetPage, 
+    category: targetCategory, 
+    productId: targetProduct?.id || null 
+  };
+
+  if (replace) {
+    // Overwrite the current history slot so the back button skips this page
+    window.history.replaceState(stateBlueprint, '', '');
+  } else {
+    // Standard navigation tracking step
+    window.history.pushState(stateBlueprint, '', '');
+  }
+};
 
   return (
     <div className="min-h-screen bg-[#faf9f6] text-stone-900 antialiased selection:bg-stone-200">
@@ -179,14 +318,13 @@ function App() {
         <div className="flex-1 flex items-center gap-6">
           <Menu size={18} strokeWidth={1.2} className="cursor-pointer text-stone-600 hover:text-stone-950 transition-colors" />
           <div className="hidden md:flex items-center gap-6 text-[11px] tracking-[0.2em] uppercase font-sans font-light text-stone-600">
-            <span onClick={() => { setGlobalCategoryFilter('All'); setCurrentPage('collection'); setSelectedProduct(null); }} className="cursor-pointer hover:text-stone-950 transition-colors">All Collections</span>
-            <span onClick={() => { setCurrentPage('home'); setSelectedProduct(null); }} className="cursor-pointer hover:text-stone-950 transition-colors">The Maison</span>
+            <span onClick={() => navigateToView('collection', 'All', null)} className="cursor-pointer hover:text-stone-950 transition-colors">All Collections</span>
           </div>
         </div>
 
         <h1 
           className="font-serif text-2xl tracking-[0.3em] uppercase text-stone-950 text-center cursor-pointer select-none" 
-          onClick={() => { setCurrentPage('home'); setSelectedProduct(null); }}
+          onClick={() => navigateToView('home', 'All', null)}
         >
           Aura
         </h1>
@@ -201,7 +339,7 @@ function App() {
             {user ? (
               user.email === 'harshiqatest@gmail.com' ? (
                 <button 
-                  onClick={() => setCurrentPage('admin')}
+                  onClick={() => navigateToView('admin', 'All', null)}
                   className="flex items-center gap-2 text-[10px] tracking-widest uppercase font-sans font-medium text-amber-800 hover:text-stone-950 transition-colors cursor-pointer group outline-none"
                   title="Access Atelier Management Terminal"
                 >
@@ -215,7 +353,7 @@ function App() {
                     className="flex items-center gap-1 hover:text-stone-950 transition-colors cursor-pointer outline-none"
                   >
                     <div className="w-6 h-6 rounded-full bg-stone-900 border border-stone-950 flex items-center justify-center text-stone-100 text-[9px] font-sans font-medium uppercase tracking-normal">
-                      {profileName ? profileName.charAt(0) : user.email.charAt(0)}
+                      {firstName ? firstName.charAt(0) : user.email.charAt(0)}
                     </div>
                     <span className="text-[8px] text-stone-400 scale-85">▼</span>
                   </button>
@@ -227,11 +365,11 @@ function App() {
                         <div className="px-4 py-2 border-b border-stone-100">
                           <p className="text-[10px] font-sans tracking-wider uppercase text-stone-400">Account</p>
                           <p className="text-xs font-sans font-medium text-stone-900 truncate mt-0.5">
-                            {profileName ? `Welcome, ${profileName}` : 'Welcome Back'}
+                            {firstName && lastName ? `Welcome, ${firstName} ${lastName}` : 'Welcome Back'}
                           </p>
                         </div>
                         <button
-                          onClick={() => { setCurrentPage('profile'); setIsProfileMenuOpen(false); }}
+                          onClick={() => { navigateToView('profile', 'All', null); setIsProfileMenuOpen(false); }}
                           className="w-full text-left px-4 py-2.5 text-xs font-sans text-stone-600 hover:bg-stone-50 hover:text-stone-950 transition-colors cursor-pointer"
                         >
                           My Profile Details
@@ -240,7 +378,9 @@ function App() {
                           onClick={async () => {
                             await supabase.auth.signOut();
                             setUser(null);
-                            setCurrentPage('home');
+                            setCartItems([]);
+                            setWishlist([]);
+                            navigateToView('home', 'All', null, true);
                             setIsProfileMenuOpen(false);
                           }}
                           className="w-full text-left px-4 py-2.5 text-xs font-sans text-red-700 hover:bg-red-50/40 transition-colors cursor-pointer border-t border-stone-100"
@@ -254,7 +394,7 @@ function App() {
               )
             ) : (
               <button 
-                onClick={() => setCurrentPage('auth')}
+                onClick={() => navigateToView('auth', 'All', null)}
                 className="text-[10px] tracking-widest uppercase font-sans font-light hover:text-stone-950 transition-colors cursor-pointer h-full"
               >
                 Sign In
@@ -262,7 +402,7 @@ function App() {
             )}
           </div>
 
-          <div className="relative cursor-pointer hover:text-stone-950 transition-colors flex items-center justify-center w-6 h-7">
+          <div className="relative cursor-pointer hover:text-stone-950 transition-colors flex items-center justify-center w-6 h-7" onClick={() => navigateToView('wishlist')}>
             <Heart size={17} strokeWidth={1.2} />
             {wishlist.length > 0 && (
               <span className="absolute -top-0.5 -right-1.5 bg-[#c5a880] text-white text-[8px] w-3.5 h-3.5 rounded-full flex items-center justify-center font-sans font-medium shadow-xs">
@@ -288,21 +428,21 @@ function App() {
             user={user}
             onOrderPlacedSuccess={() => {
               setCartItems([]);
-              setCurrentPage('home');
-              alert("Order Successfully Authorized and Processed!");
+              // alert("Order Successfully Authorized and Processed!");
             }}
-            onBack={() => setCurrentPage('collection')} 
+            navigateToView={navigateToView}
           />
         ) : selectedProduct ? (
           <ProductDetails 
-            product={selectedProduct} 
-            onBack={() => setSelectedProduct(null)} 
+            product={selectedProduct}
             wishlist={wishlist}
+            user={user}
             onToggleWishlist={handleToggleWishlist}
             onAddToBag={(quantity, size) => {
               setCartItems(prev => [...prev, { product: selectedProduct, quantity, size }]);
               setIsCartOpen(true);
             }}
+            navigateToView={navigateToView}
           />
         ) : currentPage === 'auth' ? (
           <AuthPage 
@@ -310,26 +450,27 @@ function App() {
               setUser({ id: '', email });
               setCurrentPage('home');
             }}
-            onBack={() => setCurrentPage('home')}
+            navigateToView={navigateToView}
           />
         ) : currentPage === 'profile' ? (
           <UserProfilePage 
             user={user} 
-            onBack={(targetView?: string) => {
-              if (targetView) {
-                setCurrentPage('collection');
-              } else {
-                setCurrentPage('home');
-              }
-            }}
+            navigateToView={navigateToView}
           />
         ) : currentPage === 'admin' ? (
-          <AdminDashboard onBack={() => setCurrentPage('home')} />
+          <AdminDashboard navigateToView={navigateToView} />
         ) : currentPage === 'collection' ? (
           <CollectionList 
             onSelectProduct={(prod) => setSelectedProduct(prod)} 
             initialCategory={globalCategoryFilter || 'All'}
-            onBack={() => setCurrentPage('home')}
+            navigateToView={navigateToView}
+          />
+        ) : currentPage === 'wishlist' ? (
+          <WishlistPage 
+            user={user} 
+            wishlistItems={wishlist} 
+            onToggleWishlist={handleToggleWishlist} 
+            navigateToView={navigateToView} 
           />
         ) : (
           <>
@@ -356,15 +497,15 @@ function App() {
                     <span className="text-[11px] font-sans tracking-[0.25em] uppercase text-[#c5a880]">The 2026 Edition</span>
                   </div>
                   <h2 className="font-serif text-5xl md:text-6xl tracking-wide uppercase leading-[1.1] font-light">
-                    Sculpted <br /> By Light.
+                    Curated <br />  to Last.
                   </h2>
                   <p className="font-sans text-xs md:text-sm leading-relaxed text-stone-300 font-light max-w-sm tracking-wide">
-                    Premium premium curation. Discover seasonal artifacts designed to capture light and celebrate individual elegance.
+                    Premium essentials engineered for your everyday routine. Discover our newest collection of timeless objects and apparel.
                   </p>
                   <div className="pt-4">
-                    <button onClick={() => { setGlobalCategoryFilter('All'); setCurrentPage('collection'); }}
+                    <button onClick={() => navigateToView('collection', 'All', null)}
                     className="group flex items-center gap-4 bg-[#f5f2eb] text-stone-950 px-8 py-4 text-[11px] tracking-[0.25em] uppercase hover:bg-[#c5a880] hover:text-white transition-all duration-300 shadow-md">
-                      Explore The Lineage 
+                      Explore The Collection 
                       <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
                     </button>
                   </div>
@@ -394,7 +535,7 @@ function App() {
                 ) : newArrivals.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
                     {newArrivals.map((product) => (
-                      <div key={`new-${product.id}`} onClick={() => setSelectedProduct(product)} className="group cursor-pointer bg-white p-3 border border-stone-200/60 rounded-sm hover:shadow-3xs transition-all duration-300">
+                      <div key={`new-${product.id}`} onClick={() => navigateToView('product-details', product.category, product)} className="group cursor-pointer bg-white p-3 border border-stone-200/60 rounded-sm hover:shadow-3xs transition-all duration-300">
                         <div className="aspect-square w-full overflow-hidden bg-stone-50 mb-4 relative">
                           <img src={product.main_image} alt={product.name} className="w-full h-full object-cover group-hover:scale-101 transition-transform duration-[0.8s]" />
                         </div>
@@ -451,7 +592,7 @@ function App() {
                     </p>
                     <div className="pt-2">
                       <button 
-                        onClick={() => { setGlobalCategoryFilter(rotationShowcase.category); setCurrentPage('collection'); }}
+                        onClick={() => navigateToView('collection', rotationShowcase.category, null)}
                         className="inline-flex items-center gap-2 text-[10px] tracking-widest uppercase text-stone-900 hover:text-[#c5a880] font-sans font-medium transition-colors border-b border-stone-950 pb-0.5"
                       >
                         Explore This Capsule Layout<ArrowRight size={11} />
@@ -488,7 +629,7 @@ function App() {
                       const finalPrice = hasDiscount ? product.price * (1 - (product.discount_rate || 0) / 100) : product.price;
 
                       return (
-                        <div key={`best-${product.id}`} onClick={() => setSelectedProduct(product)} className="group cursor-pointer bg-white p-3 border border-stone-200/60 rounded-sm hover: shadow-3xs transition-all duration-300 relative">
+                        <div key={`best-${product.id}`} onClick={() => navigateToView('product-details', product.category, product)} className="group cursor-pointer bg-white p-3 border border-stone-200/60 rounded-sm hover: shadow-3xs transition-all duration-300 relative">
                           <div className="aspect-square w-full overflow-hidden bg-stone-50 mb-4 relative">
                             <img src={product.main_image} alt={product.name} className="w-full h-full object-cover group-hover:scale-101 transition-transform duration-[0.8s]" />
                           </div>
@@ -517,9 +658,9 @@ function App() {
             <section className="bg-stone-950 text-[#f5f2eb] py-24 border-t border-stone-900">
               <div className="max-w-2xl mx-auto px-8 text-center space-y-6">
                 <p className="text-[10px] font-sans tracking-[0.3em] uppercase text-[#c5a880]">Atelier Invitations</p>
-                <h4 className="font-serif text-2xl md:text-3xl uppercase tracking-widest font-light">Acquire Private Access</h4>
+                <h4 className="font-serif text-2xl md:text-3xl uppercase tracking-widest font-light">Don't Miss a Drop</h4>
                 <p className="font-sans text-xs text-stone-400 font-light max-w-md mx-auto leading-relaxed tracking-wide">
-                  Receive premium collection notification cycles, masterwork previews, and private viewing events curated near you.
+                  Get immediate notifications on new releases, upcoming local gallery exhibitions, and secret markdown sales.
                 </p>
                 <div className="pt-4 max-w-md mx-auto">
                   <div className="flex border-b border-stone-700 pb-2">
@@ -543,7 +684,7 @@ function App() {
       <footer className="bg-stone-950 text-stone-500 border-t border-stone-900 px-8 py-8">
         <div className="max-w-7xl w-full mx-auto flex flex-col sm:flex-row justify-between items-center gap-4 text-center sm:text-left">
           <p className="font-sans text-[9px] tracking-[0.25em] uppercase text-stone-500">
-            &copy; 2026 Aura Atelier Inc. &mdash; High-End Portfolio Framework
+            &copy; 2026 Aura Atelier Inc. High-End Portfolio Framework &mdash; By Harshita Jain
           </p>
           <div className="flex gap-6 text-[9px] tracking-[0.2em] uppercase font-sans font-light text-stone-500">
             <span className="hover:text-[#f5f2eb] cursor-pointer transition-colors">Privacy Privacy</span>
@@ -558,15 +699,14 @@ function App() {
         cartItems={cartItems} 
         onRemoveItem={handleRemoveCartItem} 
         onNavigateToCollection={() => {
-          setCurrentPage('collection'); 
-          setSelectedProduct(null); 
-          setIsCartOpen(false);    
+          navigateToView('collection', 'All', null);
+          setIsCartOpen(false);
         }} 
         onCheckoutTrigger={() => {
-          setCurrentPage('checkout');
-          setSelectedProduct(null); 
+          navigateToView('checkout', 'All', null);
           setIsCartOpen(false);
         }}
+        user={user}
       />
     </div>
   );

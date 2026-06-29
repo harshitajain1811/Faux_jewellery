@@ -19,17 +19,55 @@ interface Product {
 }
 
 interface AdminDashboardProps {
-  onBack: () => void;
+  navigateToView: (
+    targetPage: "collection" | "home" | "auth" | "profile" | "checkout" | "admin" | "product-details", 
+    targetCategory?: string, targetProduct?: any, replace?: boolean) => void;
 }
 
-export default function AdminDashboard({ onBack }: AdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'ledger' | 'atelier'>('ledger');
+export default function AdminDashboard({ navigateToView }: AdminDashboardProps) {
+  const [activeTab, setActiveTab] = useState<'ledger' | 'atelier' | 'orders'>('orders');
   const [products, setProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [orderSearchQuery, setOrderSearchQuery] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState('ALL');
+  const [orderDaysFilter, setOrderDaysFilter] = useState('ALL');
+  const [ordersCurrentPage, setOrdersCurrentPage] = useState(1);
+  const ordersPerPage = 10;
+
+// Fetch function to load order logs directly from Supabase
+const fetchOrders = async () => {
+  setOrdersLoading(true);
+  try {
+    const { data, error } = await supabase
+      .from('orders') 
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      setOrders(data);
+    } else if (error) {
+      console.error("Error pulling history logs:", error.message);
+    }
+  } catch (err) {
+    console.error(err);
+  } finally {
+    setOrdersLoading(false);
+  }
+};
+
+// Synchronize database loads when shifting tabs
+useEffect(() => {
+  if (activeTab === 'orders') {
+    fetchOrders();
+    setOrdersCurrentPage(1);
+  }
+}, [activeTab]);
 
   // Core Options Cache
   const dynamicCategories = useMemo(() => {
@@ -306,7 +344,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     if (error) throw error;
     
     // Clear operational local window parameters and escape back to login screen view
-    onBack(); 
+    navigateToView('auth', 'All', null, true);
   } catch (err: any) {
     alert(`Logout Failed: ${err.message || err}`);
   }
@@ -324,6 +362,13 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
         <div className="flex gap-5 items-center">
           {/* Screen Workspace Tab Selection Toggles */}
           <div className="bg-stone-100 p-1 flex gap-1 rounded-xs text-[10px] tracking-widest uppercase font-medium">
+            <button 
+              type="button"
+              onClick={() => { setActiveTab('orders'); setEditingProductId(null); }} 
+              className={`px-4 py-2 rounded-2xs transition-all cursor-pointer ${activeTab === 'orders' ? 'bg-white text-stone-950 shadow-xs' : 'text-stone-400 hover:text-stone-700'}`}
+            >
+              Orders Table
+            </button>
             <button 
               type="button"
               onClick={() => { setActiveTab('ledger'); setEditingProductId(null); }} 
@@ -345,14 +390,6 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
 
           {/* Session Management Action Buttons */}
           <div className="flex items-center gap-4">
-            <button 
-              type="button"
-              onClick={onBack} 
-              className="text-xs uppercase tracking-widest text-stone-400 hover:text-stone-950 underline cursor-pointer transition-colors"
-            >
-              Exit
-            </button>
-            
             <button 
               type="button"
               onClick={handleLogout} 
@@ -378,6 +415,281 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           >
             <X size={14} />
           </button>
+        </div>
+      )}
+
+      {/* ORDERS TAB VIEW */}
+      {activeTab === 'orders' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          
+          {/* FILTER ENGINE CONTROLS BAR BOARD */}
+          <div className="flex flex-col md:flex-row items-center gap-3 w-full select-none">
+            
+            {/* 1. Multi-Context Text Search Input field */}
+            <div className="relative flex items-center flex-1 w-full">
+              <Search size={14} className="absolute left-3.5 text-stone-400" />
+              <input 
+                type="text" 
+                placeholder="Search by Order ID, Client Email, or Customer Name..." 
+                value={orderSearchQuery} 
+                onChange={(e) => { setOrderSearchQuery(e.target.value); setOrdersCurrentPage(1); }} 
+                className="w-full bg-stone-50 border border-stone-200 pl-10 pr-4 py-2.5 text-xs rounded-xs outline-none focus:border-stone-950 focus:bg-white text-stone-900" 
+              />
+            </div>
+
+            {/* 2. Order Status Selector Gate */}
+            <div className="relative w-full md:w-44 shrink-0">
+              <select
+                value={orderStatusFilter}
+                onChange={(e) => { setOrderStatusFilter(e.target.value); setOrdersCurrentPage(1); }}
+                className="w-full bg-stone-50 border border-stone-200 pl-3 pr-8 py-2.5 text-xs rounded-xs outline-none focus:border-stone-950 focus:bg-white appearance-none cursor-pointer text-stone-800 font-medium tracking-wide"
+              >
+                <option value="ALL">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="shipped">Shipped</option>
+                <option value="delivered">Delivered</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-stone-400 text-[8px]">▼</div>
+            </div>
+
+            {/* 3. Relative Timeline History Range Selector */}
+            <div className="relative w-full md:w-44 shrink-0">
+              <select
+                value={orderDaysFilter}
+                onChange={(e) => { setOrderDaysFilter(e.target.value); setOrdersCurrentPage(1); }}
+                className="w-full bg-stone-50 border border-stone-200 pl-3 pr-8 py-2.5 text-xs rounded-xs outline-none focus:border-stone-950 focus:bg-white appearance-none cursor-pointer text-stone-800 font-medium tracking-wide"
+              >
+                <option value="ALL">All Time</option>
+                <option value="1">Past 24 Hours</option>
+                <option value="7">Past Week</option>
+                <option value="30">Past Month</option>
+                <option value="90">Past 3 Months</option>
+                <option value="180">Past 6 Months</option>
+                <option value="365">Past Year</option>
+              </select>
+              <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-stone-400 text-[8px]">▼</div>
+            </div>
+
+          </div>
+
+          {/* DATA INTERPRETATION FILTER COMPUTATION LOGIC */}
+          {(() => {
+            // Filter out records based on structural selections
+            const filteredOrders = orders.filter(ord => {
+              // A. Match Search String Metrics
+              const query = orderSearchQuery.toLowerCase().trim();
+              const matchesSearch = query === '' || 
+                ord.id.toLowerCase().includes(query) || 
+                (ord.customer_email || '').toLowerCase().includes(query) ||
+                (ord.customer_name || '').toLowerCase().includes(query);
+
+              // B. Match Status Flag
+              const matchesStatus = orderStatusFilter === 'ALL' || ord.status === orderStatusFilter;
+
+              // C. Match Dynamic Relative Timeline Constraints
+              let matchesTime = true;
+              if (orderDaysFilter !== 'ALL') {
+                const limitDays = parseInt(orderDaysFilter, 10);
+                const orderDate = new Date(ord.created_at).getTime();
+                const cutoffDate = Date.now() - (limitDays * 24 * 60 * 60 * 1000);
+                matchesTime = orderDate >= cutoffDate;
+              }
+
+              return matchesSearch && matchesStatus && matchesTime;
+            });
+
+            // Pagination slice windows parameters
+            const totalOrdersPages = Math.ceil(filteredOrders.length / ordersPerPage);
+            const paginatedOrders = filteredOrders.slice(
+              (ordersCurrentPage - 1) * ordersPerPage,
+              ordersCurrentPage * ordersPerPage
+            );
+
+            if (ordersLoading) {
+              return (
+                <div className="flex flex-col items-center justify-center p-24 border border-stone-200/80 rounded-xs bg-white text-xs font-sans text-stone-400 gap-2">
+                  <span className="animate-spin text-stone-700">⚙️</span>
+                  <span>Parsing accounting order ledgers safely...</span>
+                </div>
+              );
+            }
+
+            return (
+              <>
+                <div className="w-full border border-stone-200/80 rounded-xs overflow-hidden bg-white shadow-xs">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-stone-50/70 border-b border-stone-200 text-[10px] tracking-wider uppercase text-stone-400 font-medium font-sans p-4">
+                        <th className="p-4 w-32">Order Identifier</th>
+                        <th className="p-4">Placement Date</th>
+                        <th className="p-4">Customer Details</th>
+                        <th className="p-4">Items Summary</th>
+                        <th className="p-4">Total Amount</th>
+                        <th className="p-4">Fulfillment Status</th>
+                        <th className="p-4 text-right w-24">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100 text-xs text-stone-700">
+                      {paginatedOrders.length > 0 ? (
+                        paginatedOrders.map((ord) => {
+                          const formattedDate = new Date(ord.created_at).toLocaleDateString('en-IN', {
+                            day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                          });
+
+                          // Parse order item strings dynamically depending on JSON / Array schema setup
+                          const itemsList = Array.isArray(ord.items) ? ord.items : [];
+
+                          return (
+                            <tr key={ord.id} className="hover:bg-stone-50/20">
+                              {/* ID */}
+                              <td className="p-4 font-mono text-[11px] text-stone-500 uppercase tracking-tight select-all">
+                                #{ord.id.substring(0, 8)}...
+                              </td>
+                              
+                              {/* Placement Date */}
+                              <td className="p-4 font-sans font-light text-stone-500">{formattedDate}</td>
+                              
+                              {/* Customer Info */}
+                              <td className="p-4 space-y-0.5">
+                                <div className="font-sans font-medium text-stone-900">{ord.user_details?.first_name} {ord.user_details?.last_name || 'Guest User'}</div>
+                                <div className="text-[10px] text-stone-400 font-sans">{ord.user_email || 'No email log'}</div>
+                              </td>
+                              
+                              {/* Items Breakdown summary count string representation */}
+                              <td className="p-4 font-sans text-stone-600 max-w-xs">
+                                {itemsList.length > 0 ? (
+                                  <div className="flex flex-col gap-2">
+                                    {itemsList.map((i: any, idx: number) => {
+                                      // Handle both flattened or deeply nested JSON/Relational structures safely
+                                      const imgUrl = i.product?.main_image;
+                                      const nameText = i.product?.name || 'Item';
+                                      
+                                      return (
+                                        <div key={idx} className="flex items-center gap-2 group/item">
+                                          {/* Thumbnail Box */}
+                                          <div className="w-15 h-15 bg-stone-50 overflow-hidden shrink-0 border border-stone-200/60 rounded-2xs">
+                                            {imgUrl ? (
+                                              <img 
+                                                src={imgUrl} 
+                                                alt={nameText} 
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => {
+                                                  // Fallback if image path fails to load properly
+                                                  (e.target as HTMLImageElement).src = 'https://placehold.co/100x100?text=No+Img';
+                                                }}
+                                              />
+                                            ) : (
+                                              <div className="w-full h-full flex items-center justify-center bg-stone-100 text-[8px] text-stone-400">
+                                                N/A
+                                              </div>
+                                            )}
+                                          </div>
+                                          
+                                          {/* Text Specifications */}
+                                          <div className="truncate text-[11px] leading-tight">
+                                            <span className="font-medium text-stone-900">{nameText}</span>
+                                            <span className="text-stone-400 font-light mx-1">({i.size || 'U'})</span>
+                                            <span className="text-stone-500 font-mono text-[10px] bg-stone-100 px-1 rounded-2xs">x{i.quantity}</span>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <span className="text-stone-400 italic text-[11px]">No artifact items found</span>
+                                )}
+                              </td>
+                              
+                              {/* Valuation price total */}
+                              <td className="p-4 font-sans font-semibold text-stone-900">
+                                ₹{ord.total_paid?.toLocaleString('en-IN')}
+                              </td>
+                              
+                              {/* Fulfillment Status Labels Matrix badge styling rendering options */}
+                              <td className="p-4 font-sans">
+                                <span className={`px-2 py-0.5 rounded-xs text-[10px] font-medium uppercase tracking-wider ${
+                                  ord.status === 'delivered' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/30' :
+                                  ord.status === 'cancelled' ? 'bg-red-50 text-red-600' :
+                                  ord.status === 'shipped' ? 'bg-blue-50 text-blue-700' :
+                                  'bg-stone-100 text-stone-600'
+                                }`}>
+                                  {ord.status || 'pending'}
+                                </span>
+                              </td>
+                              
+                              {/* Status Mutation Ops Buttons triggers */}
+                              <td className="p-4 text-right">
+                                <div className="flex gap-2 justify-end">
+                                  <select
+                                    value={ord.status}
+                                    onChange={async (e) => {
+                                      const nextStatus = e.target.value.toLocaleLowerCase();
+                                      if (confirm(`Transition status level profile configuration to ${nextStatus}?`)) {
+                                        await supabase.from('orders').update({ status: nextStatus }).eq('id', ord.id);
+                                        fetchOrders();
+                                      }
+                                    }}
+                                    className="text-[10px] bg-stone-50 border border-stone-200 rounded-2xs p-1 outline-none text-stone-700 cursor-pointer focus:border-stone-400"
+                                  >
+                                    <option value="Pending">Pending</option>
+                                    <option value="Shipped">Shipped</option>
+                                    <option value="Delivered">Delivered</option>
+                                    <option value="Cancelled">Cancelled</option>
+                                  </select>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td colSpan={7} className="p-12 text-center text-stone-400 font-sans italic">
+                            No customer ledger accounts matched active filter metrics blueprints.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination Controls matrix panel board segment */}
+                {totalOrdersPages > 1 && (
+                  <div className="flex items-center justify-between border border-t-0 border-stone-200/80 bg-stone-50/50 px-4 py-3 sm:px-6 rounded-b-xs select-none">
+                    <div className="text-[11px] text-stone-500 font-sans">
+                      Showing <span className="font-medium text-stone-900">{((ordersCurrentPage - 1) * ordersPerPage) + 1}</span> to{' '}
+                      <span className="font-medium text-stone-900">
+                        {Math.min(ordersCurrentPage * ordersPerPage, filteredOrders.length)}
+                      </span>{' '}
+                      of <span className="font-medium text-stone-900">{filteredOrders.length}</span> recorded orders
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={ordersCurrentPage === 1}
+                        onClick={() => setOrdersCurrentPage(prev => Math.max(prev - 1, 1))}
+                        className="px-3 py-1.5 border border-stone-200 bg-white rounded-2xs text-[11px] font-medium tracking-wide text-stone-600 hover:text-stone-950 hover:border-stone-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                      >
+                        ← Previous
+                      </button>
+                      <div className="text-[11px] font-sans px-2 text-stone-400">
+                        Page <span className="text-stone-950 font-medium">{ordersCurrentPage}</span> of {totalOrdersPages}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={ordersCurrentPage === totalOrdersPages}
+                        onClick={() => setOrdersCurrentPage(prev => Math.min(prev + 1, totalOrdersPages))}
+                        className="px-3 py-1.5 border border-stone-200 bg-white rounded-2xs text-[11px] font-medium tracking-wide text-stone-600 hover:text-stone-950 hover:border-stone-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                      >
+                        Next →
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -468,7 +780,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                       <td className="p-4 text-right">
                         <div className="flex gap-2 justify-end">
                           <button onClick={() => handleEditInitiate(product)} className="text-stone-500 hover:text-stone-950 p-1 cursor-pointer"><Edit3 size={13} /></button>
-                          <button onClick={async () => { if(confirm("Drop configuration?")) { await supabase.from('products').delete().eq('id', product.id); fetchProducts(); } }} className="text-stone-300 hover:text-red-700 p-1 cursor-pointer"><Trash2 size={13} /></button>
+                          <button onClick={async () => { if(confirm(`Delete product ${product.name} ?`)) { await supabase.from('products').delete().eq('id', product.id); fetchProducts(); } }} className="text-stone-300 hover:text-red-700 p-1 cursor-pointer"><Trash2 size={13} /></button>
                         </div>
                       </td>
                     </tr>

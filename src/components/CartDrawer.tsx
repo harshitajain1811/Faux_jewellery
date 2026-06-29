@@ -1,5 +1,7 @@
-import { X, Trash2, ArrowRight, ShieldCheck } from 'lucide-react';
+import { X, Trash2, ArrowRight, ShieldCheck, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useState } from 'react';
+import { supabase } from '../lib/supabaseClient';
 
 interface Product {
   id: string;
@@ -22,11 +24,40 @@ interface CartDrawerProps {
   onRemoveItem: (index: number) => void;
   onNavigateToCollection: () => void;
   onCheckoutTrigger: () => void;
+  user: { id: string } | null;
 }
 
-export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, onNavigateToCollection, onCheckoutTrigger }: CartDrawerProps) {
+export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, onNavigateToCollection, onCheckoutTrigger, user }: CartDrawerProps) {
   // Calculate total price dynamically
   const totalPrice = cartItems.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
+
+  const [deletingIndex, setDeletingIndex] = useState<number | null>(null);
+
+  // --- NEW INTERCEPTOR DELETION ROUTINE ---
+  const handleItemRemovalSync = async (index: number, item: CartItem) => {
+    setDeletingIndex(index);
+    try {
+      if (user?.id) {
+        // If a registered session context exists, clear row matching identity constraints
+        const { error } = await supabase
+          .from('user_carts')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('product_id', item.product.id)
+          .eq('size', item.size || 'Universal Size');
+
+        if (error) {
+          console.error("Cloud database cart item removal rejected:", error.message);
+        }
+      }
+    } catch (err) {
+      console.error("Non-blocking failure syncing local cart removal matrix:", err);
+    } finally {
+      // Fire local structural state layout update segment last
+      onRemoveItem(index);
+      setDeletingIndex(null);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -83,11 +114,25 @@ export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, o
                       </div>
                     </div>
 
-                    <button 
+                    {/* <button 
                       onClick={() => onRemoveItem(idx)}
                       className="absolute top-3 right-3 text-stone-300 hover:text-red-500 transition-colors"
                     >
                       <Trash2 size={14} strokeWidth={1.5} />
+                    </button> */}
+                    <button 
+                      type="button"
+                      disabled={deletingIndex === idx}
+                      onClick={() => handleItemRemovalSync(idx, item)}
+                      className={`absolute top-3 right-3 transition-colors cursor-pointer ${
+                        deletingIndex === idx ? 'text-stone-400 cursor-not-allowed' : 'text-stone-300 hover:text-red-500'
+                      }`}
+                    >
+                      {deletingIndex === idx ? (
+                        <Loader2 size={13} className="animate-spin text-stone-500" />
+                      ) : (
+                        <Trash2 size={14} strokeWidth={1.5} />
+                      )}
                     </button>
                   </div>
                 ))
