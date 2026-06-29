@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const cors = require('cors');
 // Securely pulls your secret key from environment variables on production platforms
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY || 'sk_test_51TmrFmFfHEi7mBiZM7l1SIyfCSDgz6QgZkybN6Ja8ZXWLjjFEeZzE2kImJR9eeSjwt9G18PChcDhQZYTGb2suXO400l9YayH30'); 
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY || 'sk_STRIPE_SECRET_KEY_PLACEHOLDER'); 
 
 const app = express();
 
