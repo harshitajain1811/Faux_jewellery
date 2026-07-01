@@ -1,4 +1,4 @@
-import { X, Trash2, ArrowRight, ShieldCheck, Loader2 } from 'lucide-react';
+import { X, Trash2, ArrowRight, ShieldCheck, Loader2, Plus, Minus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
@@ -6,9 +6,17 @@ import { supabase } from '../lib/supabaseClient';
 interface Product {
   id: string;
   name: string;
+  description: string;
   price: number;
+  discount_rate?: number;
   main_image: string;
   category: string;
+  polish?: string;
+  is_new?: boolean;
+  is_most_selling?: boolean;
+  is_featured?: boolean;
+  created_at: string;
+  size_stock?: Record<string, number>;
 }
 
 interface CartItem {
@@ -21,17 +29,29 @@ interface CartDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   cartItems: CartItem[];
+  setCartItems: React.Dispatch<React.SetStateAction<CartItem[]>>;
   onRemoveItem: (index: number) => void;
   onNavigateToCollection: () => void;
   onCheckoutTrigger: () => void;
   user: { id: string } | null;
 }
 
-export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, onNavigateToCollection, onCheckoutTrigger, user }: CartDrawerProps) {
-  // Calculate total price dynamically
+export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, setCartItems, onNavigateToCollection, onCheckoutTrigger, user }: CartDrawerProps) {
   const totalPrice = cartItems.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
-
   const [deletingIndex, setDeletingIndex] = useState<number | null>(null);
+
+  // This modifies the global array decoupled from the product page layout variables
+  const handleDrawerQtyAdjust = (index: number, shift: number) => {
+    setCartItems(prev => prev.map((item, idx) => {
+      if (idx !== index) return item;
+      
+      const nextQty = item.quantity + shift;
+      const maxAvailableStock = item.product.size_stock?.[item.size] ?? 99;
+      
+      if (nextQty < 1 || nextQty > maxAvailableStock) return item;
+      return { ...item, quantity: nextQty };
+    }));
+  };
 
   // --- NEW INTERCEPTOR DELETION ROUTINE ---
   const handleItemRemovalSync = async (index: number, item: CartItem) => {
@@ -96,46 +116,74 @@ export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, o
             {/* Scrollable Item Stack Container */}
             <div className="grow overflow-y-auto py-4 space-y-4 pr-1">
               {cartItems.length > 0 ? (
-                cartItems.map((item, idx) => (
-                  <div key={idx} className="flex gap-4 p-3 bg-white border border-stone-200/40 rounded-sm group relative">
-                    <div className="w-20 h-20 bg-stone-50 overflow-hidden shrink-0 border border-stone-100">
-                      <img src={item.product.main_image} alt={item.product.name} className="w-full h-full object-cover" />
-                    </div>
-                    
-                    <div className="grow space-y-1 min-w-0 pr-6">
-                      <div className="text-[9px] tracking-[0.15em] font-sans uppercase text-stone-400">{item.product.category}</div>
-                      <h4 className="font-serif text-sm text-stone-900 truncate font-light tracking-wide pr-2">{item.product.name}</h4>
-                      <div className="text-[11px] font-sans text-stone-500 font-light flex gap-3">
-                        <span>Size: <span className="text-stone-900 font-normal">{item.size}</span></span>
-                        <span>Qty: <span className="text-stone-900 font-normal">{item.quantity}</span></span>
-                      </div>
-                      <div className="font-sans text-xs font-medium text-stone-950 pt-1">
-                        ${(item.product.price * item.quantity).toLocaleString()}
-                      </div>
-                    </div>
+                cartItems.map((item, idx) => {
+                  // 1. Calculate dynamic max stock boundary values for this specific row item
+                  const maxAvailableStock = item.product.size_stock?.[item.size] ?? 99;
 
-                    {/* <button 
-                      onClick={() => onRemoveItem(idx)}
-                      className="absolute top-3 right-3 text-stone-300 hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 size={14} strokeWidth={1.5} />
-                    </button> */}
-                    <button 
-                      type="button"
-                      disabled={deletingIndex === idx}
-                      onClick={() => handleItemRemovalSync(idx, item)}
-                      className={`absolute top-3 right-3 transition-colors cursor-pointer ${
-                        deletingIndex === idx ? 'text-stone-400 cursor-not-allowed' : 'text-stone-300 hover:text-red-500'
-                      }`}
-                    >
-                      {deletingIndex === idx ? (
-                        <Loader2 size={13} className="animate-spin text-stone-500" />
-                      ) : (
-                        <Trash2 size={14} strokeWidth={1.5} />
-                      )}
-                    </button>
-                  </div>
-                ))
+                  return (
+                    <div key={idx} className="flex gap-4 p-3 bg-white border border-stone-200/40 rounded-sm group relative">
+                      <div className="w-20 h-20 bg-stone-50 overflow-hidden shrink-0 border border-stone-100">
+                        <img src={item.product.main_image} alt={item.product.name} className="w-full h-full object-cover" />
+                      </div>
+                      
+                      <div className="grow space-y-1 min-w-0 pr-6">
+                        <div className="text-[9px] tracking-[0.15em] font-sans uppercase text-stone-400">{item.product.category}</div>
+                        <h4 className="font-serif text-sm text-stone-900 truncate font-light tracking-wide pr-2">{item.product.name}</h4>
+                        
+                        <div className="text-[11px] font-sans text-stone-500 font-light flex items-center gap-4 pt-1">
+                          <span>Size: <span className="text-stone-900 font-normal">{item.size}</span></span>
+                          
+                          {/* FIXED DYNAMIC QUANTITY CONTROLLER BLOCK */}
+                          <div className="flex items-center border border-stone-200 bg-stone-50/50 rounded-2xs px-1">
+                            <button 
+                              type="button"
+                              // Disable minus if it's already down to 1
+                              disabled={item.quantity <= 1}
+                              onClick={() => handleDrawerQtyAdjust(idx, -1)}
+                              className="p-1 text-stone-500 hover:text-stone-950 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                            >
+                              <Minus size={10} />
+                            </button>
+                            
+                            {/* Displays the actual live quantity number directly */}
+                            <span className="w-6 text-center text-xs text-stone-950 font-medium">
+                              {item.quantity}
+                            </span>
+                            
+                            <button 
+                              type="button"
+                              // Disable plus if it reaches maximum database stock limits
+                              disabled={item.quantity >= maxAvailableStock}
+                              onClick={() => handleDrawerQtyAdjust(idx, 1)}
+                              className="p-1 text-stone-500 hover:text-stone-950 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                            >
+                              <Plus size={10} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="font-sans text-xs font-medium text-stone-950 pt-1">
+                          ₹{(item.product.price * item.quantity).toLocaleString()}
+                        </div>
+                      </div>
+
+                      <button 
+                        type="button"
+                        disabled={deletingIndex === idx}
+                        onClick={() => handleItemRemovalSync(idx, item)}
+                        className={`absolute top-3 right-3 transition-colors cursor-pointer ${
+                          deletingIndex === idx ? 'text-stone-400 cursor-not-allowed' : 'text-stone-300 hover:text-red-500'
+                        }`}
+                      >
+                        {deletingIndex === idx ? (
+                          <Loader2 size={13} className="animate-spin text-stone-500" />
+                        ) : (
+                          <Trash2 size={14} strokeWidth={1.5} />
+                        )}
+                      </button>
+                    </div>
+                  );
+                })
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-center space-y-2 py-24">
                   <p className="font-serif text-sm text-stone-400 italic">The bag is currently empty.</p>
@@ -160,7 +208,7 @@ export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, o
               <div className="space-y-1.5 text-xs">
                 <div className="flex justify-between text-stone-500 font-light">
                   <span>Subtotal Allocation</span>
-                  <span className="text-stone-950 font-medium">${totalPrice.toLocaleString()}</span>
+                  <span className="text-stone-950 font-medium">₹{totalPrice.toLocaleString()}</span>
                 </div>
                 <p className="text-[10px] text-stone-400 leading-relaxed tracking-wide">
                   Shipping logistics and regulatory surcharges are determined during secure authorization steps next.
@@ -173,7 +221,7 @@ export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, o
                     onClose();            // Step 1: Slide drawer shut smoothly
                     onCheckoutTrigger();  // Step 2: Swap layout matrix route to 'checkout' string
                   }}
-                  className="w-full bg-stone-950 text-white font-sans text-xs tracking-widest uppercase py-4 border border-stone-950 hover:bg-transparent hover:text-stone-950 transition-all duration-300 shadow-sm cursor-pointer"
+                  className="w-full bg-stone-950 text-white font-sans text-[10px] tracking-widest uppercase py-3 border border-stone-950 hover:bg-transparent hover:text-stone-950 transition-all duration-300 shadow-sm cursor-pointer"
                 >
                   Proceed to Secure Checkout
                 </button>

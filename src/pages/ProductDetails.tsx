@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ArrowRight, Heart, Star, AlertCircle } from 'lucide-react';
+import { ArrowRight, Heart, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabaseClient';
 
@@ -20,6 +20,12 @@ interface Product {
   size_stock?: Record<string, number>;
 }
 
+interface CartItem {
+  product: Product;
+  quantity: number;
+  size: string;
+}
+
 interface ProductDetailsProps {
   product: Product;
   wishlist: Product[];
@@ -28,12 +34,13 @@ interface ProductDetailsProps {
     email: string; 
     full_name?: string; 
   } | null;
+  cartItems: CartItem[];
   onToggleWishlist: (product: Product) => void;
-  onAddToBag: (quantity: number, size: string) => void;
+  onAddToBag: (product: Product, quantity: number, size: string) => void;
   navigateToView: (targetPage: "collection" | "home" | "auth" | "profile" | "checkout" | "admin" | "product-details" | "wishlist", targetCategory?: string, targetProduct?: any) => void; 
 }
 
-export default function ProductDetails({ product, wishlist, user, onToggleWishlist, onAddToBag, navigateToView }: ProductDetailsProps) {
+export default function ProductDetails({ product, wishlist, user, cartItems, onToggleWishlist, onAddToBag, navigateToView }: ProductDetailsProps) {
   const isWishlisted = wishlist.some(item => item.id === product.id);
   const [isDescExpanded, setIsDescExpanded] = useState(false);
   const [similarProducts, setSimilarProducts] = useState<Product[]>([]);
@@ -86,22 +93,22 @@ export default function ProductDetails({ product, wishlist, user, onToggleWishli
     setSelectedQuantity(1);
   }, [initialSelectedSize, product.id]);
 
-  // 2. STOCK LIMIT CALCULATION FOR SELECTED VARIANT
-  const maxAvailableStock = useMemo(() => {
-    if (!product.size_stock || !selectedSize) return 0;
-    // Safely return the numerical value from DB map record
-    return product.size_stock[selectedSize] ?? 0;
-  }, [product.size_stock, selectedSize]);
+  // // 2. STOCK LIMIT CALCULATION FOR SELECTED VARIANT
+  // const maxAvailableStock = useMemo(() => {
+  //   if (!product.size_stock || !selectedSize) return 0;
+  //   // Safely return the numerical value from DB map record
+  //   return product.size_stock[selectedSize] ?? 0;
+  // }, [product.size_stock, selectedSize]);
 
-  // Enforce safety limits if user changes sizes and previous quantity exceeds new max stock limits
-  useEffect(() => {
-    if (selectedQuantity > maxAvailableStock && maxAvailableStock > 0) {
-      setSelectedQuantity(maxAvailableStock);
-    }
-  }, [selectedSize, maxAvailableStock]);
+  // // Enforce safety limits if user changes sizes and previous quantity exceeds new max stock limits
+  // useEffect(() => {
+  //   if (selectedQuantity > maxAvailableStock && maxAvailableStock > 0) {
+  //     setSelectedQuantity(maxAvailableStock);
+  //   }
+  // }, [selectedSize, maxAvailableStock]);
 
-  const isOutOfStock = maxAvailableStock <= 0;
-  const isAtQuantityLimit = selectedQuantity >= maxAvailableStock;
+  // const isOutOfStock = maxAvailableStock <= 0;
+  // const isAtQuantityLimit = selectedQuantity >= maxAvailableStock;
 
   // 3. DYNAMIC SUB IMAGES RESOLUTION EVALUATION
   const productSubImages = useMemo(() => {
@@ -152,7 +159,6 @@ export default function ProductDetails({ product, wishlist, user, onToggleWishli
   useEffect(() => {
   async function fetchSimilar() {
     try {
-      // 1. Primary Attempt: Match category (type) exactly, excluding current product
       let { data: matches, error } = await supabase
         .from('products')
         .select('*')
@@ -189,7 +195,7 @@ export default function ProductDetails({ product, wishlist, user, onToggleWishli
         }
       }
 
-      // 3. Absolute Last Resort: If still empty, fetch any 4 alternative products
+      //If still empty, fetch any 4 alternative products
       if (!matches || matches.length === 0) {
         const { data: randomFallback } = await supabase
           .from('products')
@@ -210,33 +216,99 @@ export default function ProductDetails({ product, wishlist, user, onToggleWishli
   }
 }, [product.id, product.category, product.polish]);
 
-// --- INTERCEPTED PERSISTENT ROUTINES ---
-  
-  const handleBagAdditionSync = async () => {
-    if (isNetOutOfStock) return;
-    setIsSyncing(true);
-    
-    try {
-      // Execute the primary local layout UI sidebar trigger first
-      onAddToBag(selectedQuantity, selectedSize);
+  // 2. STOCK LIMIT CALCULATION FOR SELECTED VARIANT
+  // const maxAvailableStock = useMemo(() => {
+  //   if (!product.size_stock || !selectedSize) return 0;
+  //   // Safely return the numerical value from DB map record
+  //   return product.size_stock[selectedSize] ?? 0;
+  // }, [product.size_stock, selectedSize]);
 
-      if (user?.id) {
-        // If logged in, upsert row to remote DB storage
-        await supabase
-          .from('user_carts')
-          .upsert({
-            user_id: user.id,
-            product_id: product.id,
-            size: selectedSize || 'Universal Size',
-            quantity: selectedQuantity
-          }, { onConflict: 'user_id,product_id,size' });
-      }
-    } catch (err) {
-      console.error("Cart cloud sync rejection:", err);
-    } finally {
-      setIsSyncing(false);
+  // const existingItemInCart = cartItems?.find(
+  //   (item: any) => item.product.id === product.id && item.size === (selectedSize || 'Universal Size')
+  // );
+  // const currentQtyInCart = existingItemInCart ? existingItemInCart.quantity : 0;
+  // const isOutOfStock = maxAvailableStock <= 0;
+  // const isAtQuantityLimit = (selectedQuantity + currentQtyInCart) > maxAvailableStock;
+
+  // console.log('Existing item: ' + existingItemInCart + 'Current qty: ' + currentQtyInCart + 'Selected qty;  ' + selectedQuantity)
+  
+//   const handleBagAdditionSync = async () => {
+//   if (isNetOutOfStock) return;
+//   setIsSyncing(true);
+  
+//   try {
+//     const trueIncrementalNewQty = selectedQuantity > currentQtyInCart 
+//       ? selectedQuantity - currentQtyInCart 
+//       : selectedQuantity;
+
+//     const targetQuantity = currentQtyInCart + trueIncrementalNewQty;
+
+//     // 3. Stock safety validation check
+//     const maxAvailableStock = product.size_stock?.[selectedSize || 'Universal Size'] ?? 99;
+//     if (targetQuantity > maxAvailableStock) {
+//       alert(`The maximum allocation limit for this item is ${maxAvailableStock}. You already have ${currentQtyInCart} in your bag.`);
+//       setIsSyncing(false);
+//       // Optional: open your cart drawer here anyway to show them their cart status
+//       return;
+//     }
+//     console.log('Incr qty: ' + trueIncrementalNewQty + 'Current qty: ' + currentQtyInCart + 'selected qty: ' + selectedQuantity + 'target qty: ' + targetQuantity)
+
+//     // 4. Update your parent state structure with the combined total configuration
+//     onAddToBag(product, selectedQuantity, selectedSize || 'Universal Size');
+
+//     // 5. If logged in, upsert the COMBINED target quantity to remote DB storage
+//     if (user?.id) {
+//       const { error } = await supabase
+//         .from('user_carts')
+//         .upsert({
+//           user_id: user.id,
+//           product_id: product.id,
+//           size: selectedSize || 'Universal Size',
+//           quantity: targetQuantity // 👈 Crucial change: pass the combined sum, not just selected quantity!
+//         }, { onConflict: 'user_id,product_id,size' });
+
+//       if (error) throw error;
+//     }
+//   } catch (err) {
+//     console.error("Cart cloud sync rejection:", err);
+//   } finally {
+//     setIsSyncing(false);
+//   }
+// };
+
+  // Enforce safety limits if user changes sizes and previous quantity exceeds new max stock limits
+  
+  // Find the exact matching snapshot for THIS specific product variant inside the global cart
+  const matchingCartItem = useMemo(() => {
+    return cartItems?.find(
+      (item) => item.product.id === product.id && item.size === selectedSize
+    );
+  }, [cartItems, product.id, selectedSize]);
+
+  // CATCH-UP ACTION: When navigating back to this page, or when the drawer CLOSES, 
+  // catch up to the exact quantity that was left in the cart.
+  useEffect(() => {
+    if (matchingCartItem) {
+      setSelectedQuantity(matchingCartItem.quantity);
+    } else {
+      setSelectedQuantity(1); // Default to 1 if this product is not in the cart yet
     }
-  };
+  }, [matchingCartItem, selectedSize]); 
+
+  // Max stock rules
+  const maxAvailableStock = product.size_stock?.[selectedSize] ?? 0;
+  const isOutOfStock = maxAvailableStock <= 0;
+  const isAtQuantityLimit = selectedQuantity >= maxAvailableStock;
+
+  useEffect(() => {
+  if (maxAvailableStock > 0) {
+    if (selectedQuantity > maxAvailableStock) {
+      setSelectedQuantity(maxAvailableStock);
+    } else if (selectedQuantity < 1) {
+      setSelectedQuantity(1);
+    }
+  }
+}, [selectedSize, maxAvailableStock]); 
 
   const handleWishlistToggleSync = async () => {
     if (!user?.id) {
@@ -251,19 +323,19 @@ export default function ProductDetails({ product, wishlist, user, onToggleWishli
     <div className="min-h-screen bg-[#faf9f6] text-stone-900 antialiased">
       <main className="max-w-7xl w-full mx-auto px-8 py-16">
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 sm:gap-16 items-start">
           
           {/* LEFT CONTAINER: Premium Image Viewer */}
-          <div className="lg:col-span-7 grid grid-cols-12 gap-4 lg:sticky lg:top-28">
+          <div className="lg:col-span-7 sm:flex-row flex flex-col-reverse gap-4 lg:sticky lg:top-28">
             
             {/* Extreme Left: Vertical Angle Thumbnails (Shown conditional to array records availability) */}
             {productSubImages.length > 0 && (
-              <div className="col-span-2 space-y-3 hidden sm:flex flex-col">
+              <div className="space-y-3 flex sm:flex-col sm:w-[15%] gap-2">
                 {[product.main_image, ...productSubImages].map((imgUrl, index) => (
                   <div 
                     key={index} 
                     onClick={() => setActiveViewerImage(imgUrl)}
-                    className={`aspect-square w-full bg-white border rounded-sm overflow-hidden cursor-pointer transition-colors ${
+                    className={`aspect-square h-20 bg-white border rounded-sm overflow-hidden cursor-pointer transition-colors ${
                       activeViewerImage === imgUrl ? 'border-stone-950' : 'border-stone-200/60 hover:border-stone-400'
                     }`}
                   >
@@ -278,7 +350,7 @@ export default function ProductDetails({ product, wishlist, user, onToggleWishli
             )}
 
             {/* Main Featured Image Display */}
-            <div className={productSubImages.length > 0 ? "col-span-10" : "col-span-12"}>
+            <div className={productSubImages.length > 0 ? "sm:w-[85%]" : "w-full"}>
               <div className="aspect-square w-full overflow-hidden bg-white border border-stone-200/40 rounded-sm relative group">
                 <img 
                   src={activeViewerImage} 
@@ -301,11 +373,7 @@ export default function ProductDetails({ product, wishlist, user, onToggleWishli
           >
             {/* Title & Core Meta Matrix */}
             <div className="space-y-3 border-b border-stone-200/50 pb-6">
-              <div className="flex items-center gap-1 text-[#c5a880]">
-                {[...Array(5)].map((_, i) => <Star key={i} size={12} fill="currentColor" stroke="none" />)}
-                <span className="text-[10px] tracking-wider text-stone-400 font-sans pl-1.5">(4.9/5 Genuine Atelier Reviews)</span>
-              </div>
-              <h2 className="font-serif text-3xl md:text-4xl tracking-wide uppercase font-light text-stone-900">
+              <h2 className="font-serif text-2xl md:text-4xl tracking-wide uppercase font-light text-stone-900">
                 {product.name}
               </h2>
               
@@ -314,10 +382,10 @@ export default function ProductDetails({ product, wishlist, user, onToggleWishli
                 {hasDiscount ? (
                   <>
                     <span className="font-sans text-2xl font-medium text-stone-950">
-                      ${Math.round(calculatedDiscountedPrice).toLocaleString()}
+                      ₹{Math.round(calculatedDiscountedPrice).toLocaleString()}
                     </span>
                     <span className="font-sans text-sm text-stone-400 line-through">
-                      ${product.price.toLocaleString()}
+                      ₹{product.price.toLocaleString()}
                     </span>
                     <span className="text-[10px] tracking-wider font-sans font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-xs uppercase">
                       Save {product.discount_rate}%
@@ -325,7 +393,7 @@ export default function ProductDetails({ product, wishlist, user, onToggleWishli
                   </>
                 ) : (
                   <span className="font-sans text-2xl font-light text-stone-950">
-                    ${product.price.toLocaleString()}
+                    ₹{product.price.toLocaleString()}
                   </span>
                 )}
               </div>
@@ -377,8 +445,8 @@ export default function ProductDetails({ product, wishlist, user, onToggleWishli
                     <span className="px-4 text-sm font-sans font-light w-12 text-center">{selectedQuantity}</span>
                     <div className="flex flex-col border-l border-stone-200">
                       <button 
-                        disabled={isAtQuantityLimit}
-                        onClick={() => setSelectedQuantity(prev => Math.min(maxAvailableStock, prev + 1))} 
+                        disabled={selectedQuantity >= maxAvailableStock || maxAvailableStock <= 0}
+                        onClick={() => setSelectedQuantity(prev => prev + 1)} 
                         className={`px-2 py-1 text-[10px] select-none transition-colors ${
                           isAtQuantityLimit 
                             ? "text-stone-300 bg-stone-50/50 cursor-not-allowed" 
@@ -388,7 +456,8 @@ export default function ProductDetails({ product, wishlist, user, onToggleWishli
                         ▲
                       </button>
                       <button 
-                        onClick={() => setSelectedQuantity(prev => Math.max(1, prev - 1))} 
+                        disabled = {selectedQuantity <= 1 || maxAvailableStock <= 0}
+                        onClick={() => setSelectedQuantity(prev => Math.max(1, prev - 1))}
                         className="px-2 py-1 text-[10px] text-stone-500 hover:text-stone-950 cursor-pointer border-t border-stone-100"
                       >
                         ▼
@@ -433,14 +502,13 @@ export default function ProductDetails({ product, wishlist, user, onToggleWishli
               </div>
 
               <div className="space-y-1">
-                <h4 className="text-[10px] font-sans tracking-[0.25em] uppercase text-stone-400">Maison Care Instructions</h4>
+                <h4 className="text-[10px] font-sans tracking-[0.25em] uppercase text-stone-400">Jewellery Care Instructions</h4>
                 <p className="font-sans text-xs leading-relaxed text-amber-700/90 font-light tracking-wide bg-amber-50/40 p-3 border border-amber-200/20 rounded-xs">
                   To preserve the high-intensity protective micro-sealing layer, avoid direct contact with high-moisture elements, heavy alcohol perfumes, or sanitizers.
                 </p>
               </div>
             </div>
 
-            {/* ACTION BUTTONS MATRIX INTERLOCK (With updated OOS Alert above the button) */}
             <div className="space-y-3 pt-2">
               {isNetOutOfStock && (
                 <motion.div 
@@ -454,12 +522,12 @@ export default function ProductDetails({ product, wishlist, user, onToggleWishli
               )}
 
               {showAuthMessage && (
-                  <div className="flex items-center gap-2 whitespace-nowrap text-[#c5a880] font-bold text-[10px] font-sans uppercase tracking-widest animate-fade-in z-50">
+                  <div className="flex items-center gap-2 text-[#c5a880] font-bold text-[10px] font-sans uppercase tracking-widest animate-fade-in z-50">
                     Please sign in to save items to your wishlist
                   </div>
                 )}
 
-              {/* ACTION BUTTONS MATRIX INTERLOCK */}
+              {/* ACTION BUTTONS */}
             <div className="space-y-3 pt-2">
               {isNetOutOfStock && (
                 <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 text-red-800 bg-red-50/60 border border-red-200/40 rounded-xs p-3 text-xs font-sans tracking-wide"><AlertCircle size={14} className="shrink-0 text-red-700" /><span>This product is out of stock.</span></motion.div>
@@ -469,14 +537,14 @@ export default function ProductDetails({ product, wishlist, user, onToggleWishli
                 <button 
                   type="button"
                   disabled={isNetOutOfStock || isSyncing} 
-                  onClick={handleBagAdditionSync}
+                  onClick={() => onAddToBag(product, selectedQuantity, selectedSize)}
                   className={`grow group flex items-center justify-center gap-3 border px-8 py-4 text-xs tracking-widest uppercase transition-all duration-300 shadow-sm ${
                     isNetOutOfStock || isSyncing
                       ? "bg-stone-200 text-stone-400 border-stone-200 cursor-not-allowed" 
                       : "bg-stone-950 text-white border-stone-900 hover:bg-transparent hover:text-stone-950 cursor-pointer"
                   }`}
                 >
-                  {isSyncing ? "Syncing Maison Vault..." : "Acquire to Bag"}
+                  {isSyncing ? "Syncing Aura Vault..." : "Acquire to Bag"}
                 </button>
                 
                 <button 
@@ -494,16 +562,16 @@ export default function ProductDetails({ product, wishlist, user, onToggleWishli
           </motion.div>
         </div>
 
-        {/* SIMILAR PRODUCTS SECTION (Updated with category filter route navigation) */}
+        {/* SIMILAR PRODUCTS SECTION */}
         <section className="mt-24 pt-16 border-t border-stone-200/60 space-y-12">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div className="flex items-end justify-between gap-4">
             <div className="space-y-1">
-              <p className="text-[10px] font-sans tracking-[0.3em] uppercase text-stone-400">Atelier Curations</p>
+              <p className="text-[10px] font-sans tracking-[0.3em] uppercase text-stone-400">Aura Vault Curations</p>
               <h3 className="font-serif text-2xl uppercase tracking-wider text-stone-900 font-light">View Similar Products</h3>
             </div>
             <button 
               onClick={() => navigateToView('collection', product.category, null)} 
-              className="text-xs uppercase tracking-widest font-sans font-light text-stone-500 hover:text-stone-950 transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="text-xs uppercase tracking-widest font-sans font-light text-stone-500 hover:text-stone-950 transition-colors hidden sm:flex items-center gap-1.5 cursor-pointer"
             >
               View Full Vault <ArrowRight size={12} />
             </button>
@@ -527,6 +595,13 @@ export default function ProductDetails({ product, wishlist, user, onToggleWishli
               </div>
             ))}
           </div>
+
+            <button 
+              onClick={() => navigateToView('collection', product.category, null)} 
+              className="text-xs uppercase tracking-widest font-sans font-light text-stone-500 hover:text-stone-950 transition-colors sm:hidden justify-self-end flex items-center gap-1.5 cursor-pointer"
+            >
+              View Full Vault <ArrowRight size={12} />
+            </button>
         </section>
       </main>
     </div>

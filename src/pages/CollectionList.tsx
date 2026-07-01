@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { ArrowRight, SlidersHorizontal, Search } from 'lucide-react';
+import { ArrowRight, SlidersHorizontal, Search, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Product {
@@ -20,15 +20,15 @@ interface Product {
 }
 
 interface CollectionListProps {
-  onSelectProduct: (product: Product) => void;
   initialCategory: string;
   navigateToView: (targetPage: "collection" | "home" | "auth" | "profile" | "checkout" | "admin" | "product-details", targetCategory?: string, targetProduct?: any) => void;
 }
 
-export default function CollectionList({ onSelectProduct, initialCategory, navigateToView }: CollectionListProps) {
+export default function CollectionList({ initialCategory, navigateToView }: CollectionListProps) {
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   
   // Client-Side Pagination States
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -55,7 +55,6 @@ export default function CollectionList({ onSelectProduct, initialCategory, navig
     async function fetchCompleteCatalog() {
       try {
         setLoading(true);
-        // FIX: Added explicit broad row limits (.range) to smash the implicit 15-row API ceiling
         const { data, error } = await supabase
           .from('products')
           .select('*')
@@ -165,31 +164,30 @@ export default function CollectionList({ onSelectProduct, initialCategory, navig
 
   return (
     <div className="max-w-7xl w-full mx-auto px-8 py-12 space-y-6 select-none">
-
-      {/* DASHBOARD SEARCH INPUT BAR CONTAINER */}
-      <div className="relative w-full bg-white border border-stone-200 rounded-xs flex items-center px-4 py-3 shadow-2xs focus-within:border-stone-950 transition-colors">
-        <Search size={16} className="text-stone-400 mr-3 shrink-0" />
-        <input 
-          type="text"
-          placeholder="Search entire collection catalog by name..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full bg-transparent text-sm font-sans outline-none text-stone-800 placeholder-stone-400"
-        />
-        {searchQuery && (
-          <button onClick={() => setSearchQuery('')} className="text-[10px] text-stone-400 hover:text-stone-900 uppercase tracking-wider pl-2 font-sans cursor-pointer">
-            Clear
-          </button>
-        )}
+      <div>
+          <p className="text-[10px] font-sans tracking-[0.3em] uppercase text-stone-400">Vault Curations</p>
+          <h2 className="font-serif text-2xl uppercase tracking-widest text-stone-900 font-light mt-1">The Collection Registry</h2>
       </div>
       
-      <div className="flex justify-between items-end border-b border-stone-200/60 pb-5 pt-2">
-        <div>
-          <p className="text-[10px] font-sans tracking-[0.3em] uppercase text-stone-400">Atelier Curations</p>
-          <h2 className="font-serif text-2xl uppercase tracking-widest text-stone-900 font-light mt-1">The Collection Registry</h2>
+      <div className="flex flex-col gap-6 items-start sm:flex-row justify-between sm:items-end border-b border-stone-200/60 pb-5 pt-2">
+        {/* SEARCH INPUT BAR */}
+        <div className="w-full sm:flex-1 bg-white border border-stone-200 rounded-xs flex items-center px-3 py-2 shadow-2xs focus-within:border-stone-950 transition-colors">
+          <Search size={16} className="text-stone-400 mr-3 shrink-0" />
+          <input 
+            type="text"
+            placeholder="Search collection catalog by name..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-transparent text-sm font-sans outline-none text-stone-800 placeholder-stone-400"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="text-[10px] text-stone-400 hover:text-stone-900 uppercase tracking-wider pl-2 font-sans cursor-pointer">
+              Clear
+            </button>
+          )}
         </div>
         
-        <div className="flex items-center gap-2 border border-stone-200 bg-white px-3 py-2 rounded-xs text-xs font-sans">
+        <div className="flex items-center gap-2 border border-stone-200 bg-white px-3 py-2 rounded-xs text-xs font-sans shadow-2xs">
           <SlidersHorizontal size={11} className="text-stone-400" />
           <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="bg-transparent border-none outline-none text-stone-700 p-0 cursor-pointer">
             <option value="featured">Sort: Featured</option>
@@ -201,24 +199,40 @@ export default function CollectionList({ onSelectProduct, initialCategory, navig
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
         
-        {/* SIDEBAR FILTER PANEL */}
-        <aside className="lg:col-span-3 space-y-3 lg:sticky lg:top-32 bg-stone-50/60 backdrop-blur-md p-6 border border-stone-200/50 rounded-sm shadow-xs">
-          <div className="flex justify-between items-center border-b border-stone-200/80 pb-4 mb-2">
-            <h3 className="text-[11px] font-sans font-medium uppercase tracking-[0.2em] text-stone-900">Refine Matrix</h3>
-            <button 
-              onClick={() => {
-                setSearchQuery('');
-                setActiveCategory('All');
-                setSelectedPolish('All');
-                setMaxPrice(10000);
-                setHideOutOfStock(false);
-                setSortBy('featured');
-              }}
-              className="text-[10px] uppercase tracking-[0.25em] font-sans font-light text-stone-400 hover:text-amber-800 transition-colors duration-300 cursor-pointer"
-            >
-              Reset All
-            </button>
+      {/*  MOBILE TOGGLE TRIGGER  */}
+      <div className="lg:hidden w-full mb-4">
+        <button 
+          onClick={() => setIsMobileFilterOpen(true)}
+          className="w-full flex items-center justify-center gap-2 bg-white border border-stone-200 py-3.5 px-4 rounded-xs text-[11px] font-sans font-medium uppercase tracking-[0.2em] text-stone-900 active:bg-stone-50 transition-colors"
+        >
+          <SlidersHorizontal size={13} className="text-stone-500" />
+          Filter Options
+        </button>
+      </div>
+
+      {/* SIDEBAR FILTER PANEL */}
+      <aside className={`
+        /* Desktop Sticky Layout Configuration */
+        lg:col-span-4 xl:col-span-3 lg:sticky lg:top-32 lg:block space-y-3 bg-stone-50/60 backdrop-blur-md p-6 border border-stone-200/50 rounded-sm shadow-xs
+        
+        /* Responsive Mobile Drawer Morphing System */
+        ${isMobileFilterOpen ? 'fixed inset-0 z-50 bg-[#ffffffe8] block overflow-y-auto p-8' : 'hidden'}
+      `}>
+        
+        {/* HEADER BLOCK: Title and dynamic Close [X] interceptor */}
+        <div className="flex justify-between items-center border-b border-stone-200/80 pb-4 mb-4">
+          <div className="flex items-center gap-2">
+            <SlidersHorizontal size={13} className="text-stone-900 max-lg:block hidden" />
+            <h3 className="text-[11px] font-sans font-medium uppercase tracking-[0.2em] text-stone-900">Filter Options</h3>
           </div>
+          
+          <button 
+            onClick={() => setIsMobileFilterOpen(false)}
+            className="lg:hidden text-stone-600 hover:text-stone-950 p-1 transition-colors"
+          >
+            <X size={18} />
+          </button>
+        </div>
 
           {/* CATEGORIES DRAWER */}
           <div className="border-b border-stone-200/40 pb-3">
@@ -269,7 +283,7 @@ export default function CollectionList({ onSelectProduct, initialCategory, navig
             <button onClick={() => setIsPriceDropdownOpen(!isPriceDropdownOpen)} className="w-full flex justify-between items-center py-2.5 text-left focus:outline-none group cursor-pointer">
               <div className="flex flex-col space-y-1">
                 <span className="text-[9px] font-sans tracking-[0.2em] uppercase text-stone-400 font-medium group-hover:text-stone-950 transition-colors">Price Range</span>
-                <span className="text-[11px] font-sans uppercase text-stone-900 tracking-wider">${maxPrice} Max Ceiling</span>
+                <span className="text-[11px] font-sans uppercase text-stone-900 tracking-wider">₹{maxPrice} Max Range</span>
               </div>
               <motion.span animate={{ rotate: isPriceDropdownOpen ? 180 : 0, color: isPriceDropdownOpen ? '#c5a880' : '#a8a29e' }} transition={{ duration: 0.4 }} className="text-[9px] origin-center px-1">▼</motion.span>
             </button>
@@ -294,10 +308,35 @@ export default function CollectionList({ onSelectProduct, initialCategory, navig
               </div>
             </label>
           </div>
+
+          {/* RESET ALL ACTION BUTTON */}
+          <div className="pt-4 flex flex-col gap-3">
+            <button 
+              onClick={() => {
+                setSearchQuery('');
+                setActiveCategory('All');
+                setSelectedPolish('All');
+                setMaxPrice(10000);
+                setHideOutOfStock(false);
+                setSortBy('featured');
+              }}
+              className="w-full text-center py-3 text-[10px] uppercase tracking-[0.25em] font-sans font-light text-stone-500 bg-stone-100 hover:bg-stone-200/60 hover:text-amber-900 transition-all duration-300 cursor-pointer rounded-xs"
+            >
+              Reset All Modifiers
+            </button>
+
+            {/* Mobile view-only Confirmation baseline hook */}
+            <button 
+              onClick={() => setIsMobileFilterOpen(false)}
+              className="lg:hidden w-full text-center py-3 text-[10px] uppercase tracking-[0.25em] font-sans font-medium text-white bg-stone-950 rounded-xs"
+            >
+              Apply Filters
+            </button>
+          </div>
         </aside>
 
         {/* PRODUCTS REGISTRY GRID */}
-        <div className="lg:col-span-9">
+        <div className="xl:col-span-9 lg:col-span-8">
           {loading ? (
             <div className="py-32 text-center text-xs tracking-widest text-stone-400 uppercase font-sans animate-pulse">
               Syncing active vault ledgers...
@@ -343,14 +382,14 @@ export default function CollectionList({ onSelectProduct, initialCategory, navig
                         <div className="flex items-center gap-1.5">
                           {hasDiscount ? (
                             <>
-                              <span className="text-stone-950 font-medium">${Math.round(finalPrice).toLocaleString()}</span>
-                              <span className="text-[10px] text-stone-400 line-through">${product.price.toLocaleString()}</span>
+                              <span className="text-stone-950 font-medium">₹{Math.round(finalPrice).toLocaleString()}</span>
+                              <span className="text-[10px] text-stone-400 line-through">₹{product.price.toLocaleString()}</span>
                               <span className="text-[9px] text-emerald-700 font-medium bg-emerald-50 px-1 rounded-3xs">
                                 (-{product.discount_rate}%)
                               </span>
                             </>
                           ) : (
-                            <span className="text-stone-950 font-medium">${product.price.toLocaleString()}</span>
+                            <span className="text-stone-950 font-medium">₹{product.price.toLocaleString()}</span>
                           )}
                         </div>
 

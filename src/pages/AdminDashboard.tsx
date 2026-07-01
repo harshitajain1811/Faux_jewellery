@@ -355,11 +355,11 @@ useEffect(() => {
       {/* HEADER SECTION */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end border-b border-stone-200 pb-6 mb-8 gap-4 select-none">
         <div>
-          <span className="text-[9px] tracking-[0.3em] text-[#c5a880] uppercase font-medium">Maison Operations Control</span>
+          <span className="text-[9px] tracking-[0.3em] text-[#c5a880] uppercase font-medium">Aura Operations Control</span>
           <h2 className="font-serif text-3xl uppercase tracking-wider text-stone-900 font-light mt-1">Management Registry</h2>
         </div>
         
-        <div className="flex gap-5 items-center">
+        <div className="flex flex-col sm:flex-row gap-5 items-center">
           {/* Screen Workspace Tab Selection Toggles */}
           <div className="bg-stone-100 p-1 flex gap-1 rounded-xs text-[10px] tracking-widest uppercase font-medium">
             <button 
@@ -517,7 +517,7 @@ useEffect(() => {
 
             return (
               <>
-                <div className="w-full border border-stone-200/80 rounded-xs overflow-hidden bg-white shadow-xs">
+                <div className="w-full border overflow-x-auto border-stone-200/80 rounded-xs overflow-hidden bg-white shadow-xs">
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-stone-50/70 border-b border-stone-200 text-[10px] tracking-wider uppercase text-stone-400 font-medium font-sans p-4">
@@ -655,7 +655,7 @@ useEffect(() => {
 
                 {/* Pagination Controls matrix panel board segment */}
                 {totalOrdersPages > 1 && (
-                  <div className="flex items-center justify-between border border-t-0 border-stone-200/80 bg-stone-50/50 px-4 py-3 sm:px-6 rounded-b-xs select-none">
+                  <div className="flex flex-col sm:flex-row gap-y-2.5 items-center justify-between border border-t-0 border-stone-200/80 bg-stone-50/50 px-4 py-3 rounded-b-xs select-none">
                     <div className="text-[11px] text-stone-500 font-sans">
                       Showing <span className="font-medium text-stone-900">{((ordersCurrentPage - 1) * ordersPerPage) + 1}</span> to{' '}
                       <span className="font-medium text-stone-900">
@@ -696,9 +696,9 @@ useEffect(() => {
       {/* LEDGER TAB VIEW */}
       {activeTab === 'ledger' && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          <div className="flex flex-row items-center gap-3 w-full max-w-2xl select-none">
+          <div className="flex flex-col md:flex-row items-center gap-3 w-full max-w-2xl select-none">
             
-            <div className="relative flex items-center flex-1">
+            <div className="relative flex items-center flex-1 w-full">
               <Search size={14} className="absolute left-3.5 text-stone-400" />
               <input 
                 type="text" 
@@ -709,7 +709,7 @@ useEffect(() => {
               />
             </div>
 
-            <div className="relative w-40 sm:w-48 shrink-0">
+            <div className="relative w-full md:w-44 shrink-0">
               <select
                 value={selectedTypeFilter}
                 onChange={(e) => setSelectedTypeFilter(e.target.value)}
@@ -728,7 +728,7 @@ useEffect(() => {
 
           </div>
 
-          <div className="w-full border border-stone-200/80 rounded-xs overflow-hidden bg-white shadow-xs">
+          <div className="w-full overflow-x-auto border border-stone-200/80 rounded-xs overflow-hidden bg-white shadow-xs">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-stone-50/70 border-b border-stone-200 text-[10px] tracking-wider uppercase text-stone-400 font-medium font-sans p-4">
@@ -792,7 +792,7 @@ useEffect(() => {
 
           {/* Table Display Box Container Ends Above... Now Pagination Controls: */}
     {totalPages > 1 && (
-      <div className="flex items-center justify-between border border-t-0 border-stone-200/80 bg-stone-50/50 px-4 py-3 sm:px-6 rounded-b-xs select-none">
+      <div className="flex flex-col sm:flex-row gap-y-2.5 items-center justify-between border border-t-0 border-stone-200/80 bg-stone-50/50 px-4 py-3 rounded-b-xs select-none">
         
         {/* Left Side: Summary Metrics */}
         <div className="text-[11px] text-stone-500 font-sans">

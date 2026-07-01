@@ -105,7 +105,7 @@ export default function AuthPage({ onAuthSuccess, navigateToView }: AuthPageProp
         }
         if (data.user) {
           onAuthSuccess(data.user.user_metadata?.full_name || data.user.email || email);
-          navigateToView('home', 'All', null, true);
+          navigateToView('home', undefined, null, true);
         }
       }
 

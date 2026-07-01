@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Sparkles, ArrowRight, ShoppingBag, Menu, Heart, MapPin, Flame } from 'lucide-react';
+import { Sparkles, ArrowRight, ShoppingBag, Menu, Heart, X, Flame } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from './lib/supabaseClient';
 import AuthPage from './pages/AuthPage';
@@ -10,6 +10,14 @@ import CollectionList from './pages/CollectionList';
 import Checkout from './pages/Checkout';
 import AdminDashboard from './pages/AdminDashboard';
 import WishlistPage from './pages/WishlistPage';
+import About from './pages/About';
+import Contact from './pages/Contact';
+import Faq from './pages/Faq';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsOfService from './pages/TermsOfService';
+import ReturnAndRefund from './pages/ReturnAndExchangePolicy';
+import ShippingDelivery from './pages/ShippingAndDelivery';
+import CancellationRefund from './pages/CancelAndRefundPolicy';
 
 interface Product {
   id: string;
@@ -43,16 +51,122 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [wishlist, setWishlist] = useState<Product[]>([]);
   const [globalCategoryFilter, setGlobalCategoryFilter] = useState<string>('All');
+
+  // 1. INITIAL SETUP: Seed the first history state when the app boots up
+useEffect(() => {
+  if (!window.history.state) {
+    window.history.replaceState({ page: currentPage, category: globalCategoryFilter, productId: selectedProduct?.id }, '', '');
+  }
+}, []);
+
+// 2. INTERCEPT ENGINE: Listen for the user hitting the browser's back/forward buttons
+useEffect(() => {
+  const handleHardwareNavigation = (event: PopStateEvent) => {
+    if (event.state) {
+      const { page, category, productId } = event.state;
+      
+      // Restore the historical page position smoothly
+      setCurrentPage(page || 'home');
+      setGlobalCategoryFilter(category || 'All');
+      
+      // If we are backing into a specific product detail look, find it in your local cache/state
+      if (productId) {
+        const foundProd = products.find(p => p.id === productId); // Replace with your master products array variable
+        setSelectedProduct(foundProd || null);
+      } else {
+        setSelectedProduct(null);
+      }
+    } else {
+      // Baseline safety catch-all
+      setCurrentPage('home');
+      setGlobalCategoryFilter('All');
+      setSelectedProduct(null);
+    }
+  };
+
+  window.addEventListener('popstate', handleHardwareNavigation);
+  return () => window.removeEventListener('popstate', handleHardwareNavigation);
+}, [products]);
+
+  // SYNC RECOVERY HOOK (Run immediately when a user signs in)
+useEffect(() => {
+  async function loadSavedUserData() {
+    if (!user?.id) return;
+
+    try {
+      // 1. Fetch saved Cart items with nested Product data
+      const { data: savedCart, error: cartErr } = await supabase
+        .from('user_carts')
+        .select('quantity, size, product:products(*)')
+        .eq('user_id', user.id);
+
+      if (!cartErr && savedCart && savedCart.length > 0) {
+        const formattedCart: CartItem[] = savedCart.map(item => {
+          const productData = Array.isArray(item.product) ? item.product[0] : item.product;
+          
+          return {
+            product: productData as Product, // Casts directly to your internal Product interface
+            quantity: Number(item.quantity),
+            size: item.size || 'Universal Size'
+          };
+        });
+        setCartItems(formattedCart); // Overwrite/hydrate local side-panel cart state
+      }
+
+      // 2. Fetch saved Wishlist records
+      const { data: savedWish, error: wishErr } = await supabase
+        .from('user_wishlists')
+        .select('product:products(*)');
+
+      if (!wishErr && savedWish) {
+        // Collect product IDs into an array to activate local Heart state fills
+        const fullWishlistProducts: Product[] = savedWish
+        .map(w => (Array.isArray(w.product) ? w.product[0] : w.product))
+        .filter(Boolean) as Product[]; 
+        setWishlist(fullWishlistProducts); 
+      }
+    } catch (err) {
+      console.error("Failed to restore cloud user state metrics:", err);
+    }
+  }
+
+  loadSavedUserData();
+}, [user?.id]);
   
-  const handleRemoveCartItem = (indexToRemove: number) => {
-    setCartItems(prev => prev.filter((_, idx) => idx !== indexToRemove));
+  const [currentPage, setCurrentPage] = useState<'home' | 'collection' | 'auth' | 'profile' | 'checkout' | 'admin' | 'product-details' | 'wishlist' | 'about' | 'contact' | 'faq' | 'privacy-policy' | 'terms-of-service' | 'return-and-refund' | 'shipping-delivery' | 'cancellation-refund'>('home');
+  //SYNCHRONIZATION POINT: Whenever your code changes views via clicks, log a checkpoint
+  const navigateToView = (
+    targetPage: "home" | "collection" | "auth" | "profile" | "checkout" | "admin" | "product-details" | "wishlist" | "about" | "contact" | "faq" | "privacy-policy" | "terms-of-service" | "return-and-refund" | "shipping-delivery" | "cancellation-refund",
+    targetCategory: string = 'All', targetProduct: any = null, replace: boolean = false) => {
+    setCurrentPage(targetPage);
+    setGlobalCategoryFilter(targetCategory);
+    setSelectedProduct(targetProduct);
+    
+    const stateBlueprint = { 
+      page: targetPage, 
+      category: targetCategory, 
+      productId: targetProduct?.id || null 
+    };
+
+    if (replace) {
+      // Overwrite the current history slot so the back button skips this page
+      window.history.replaceState(stateBlueprint, '', '');
+    } else {
+      // Standard navigation tracking step
+      window.history.pushState(stateBlueprint, '', '');
+    }
   };
   
-  const [currentPage, setCurrentPage] = useState<'home' | 'collection' | 'auth' | 'profile' | 'checkout' | 'admin' | 'product-details' | 'wishlist'>('home');
-
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, [selectedProduct, currentPage]);
+
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const handleMobileNavClick = (viewTarget: any, cat: any = null, prod: any = null) => {
+    navigateToView(viewTarget, cat, prod);
+    setIsMobileMenuOpen(false);
+  };
 
   const [firstName, setFirstName] = useState<string>('');
   const [lastName, setLastName] = useState<string>('');
@@ -158,17 +272,6 @@ function App() {
     };
   }, [products]);
 
-  // const handleToggleWishlist = (productToToggle: Product) => {
-  //   setWishlist(prev => {
-  //     const exists = prev.some(item => item.id === productToToggle.id);
-  //     if (exists) {
-  //       return prev.filter(item => item.id !== productToToggle.id);
-  //     } else {
-  //       return [...prev, productToToggle];
-  //     }
-  //   });
-  // };
-
   const handleToggleWishlist = async (product: Product) => {
   if (!user?.id) return;
 
@@ -201,147 +304,112 @@ function App() {
   }
 };
 
-  // SYNC RECOVERY HOOK (Run immediately when a user signs in)
-useEffect(() => {
-  async function loadSavedUserData() {
-    if (!user?.id) return;
+  const onAddToBag = (product: any, quantity: number, size: string) => {
+    setCartItems(prevItems => {
+      const existingIdx = prevItems.findIndex(
+        item => item.product.id === product.id && item.size === size
+      );
+
+      if (existingIdx > -1) {
+        // Exact Overwrite Rule: Carry forward the exact quantity from the page
+        return prevItems.map((item, idx) => 
+          idx === existingIdx ? { ...item, quantity } : item
+        );
+      } else {
+        // Fresh Add Rule
+        return [...prevItems, { product, quantity, size }];
+      }
+    });
+    setIsCartOpen(true);
+  };
+
+  // 2. DRAWER BULK SYNC ENGINE: Fires ONCE when drawer closes or checkout is clicked
+  const handleSyncCartToDatabase = async (currentCart: CartItem[]) => {
+    if (!user?.id) return; // Ignore for Guests (remains safe in global memory state)
 
     try {
-      // 1. Fetch saved Cart items with nested Product data
-      const { data: savedCart, error: cartErr } = await supabase
+      // Format all current items for a single batch upsert query
+      const upsertRows = currentCart.map(item => ({
+        user_id: user.id,
+        product_id: item.product.id,
+        size: item.size,
+        quantity: item.quantity
+      }));
+
+      if (upsertRows.length === 0) return;
+
+      const { error } = await supabase
         .from('user_carts')
-        .select('quantity, size, product:products(*)')
-        .eq('user_id', user.id);
+        .upsert(upsertRows, { onConflict: 'user_id,product_id,size' });
 
-      if (!cartErr && savedCart && savedCart.length > 0) {
-        const formattedCart: CartItem[] = savedCart.map(item => {
-          const productData = Array.isArray(item.product) ? item.product[0] : item.product;
-          
-          return {
-            product: productData as Product, // Casts directly to your internal Product interface
-            quantity: Number(item.quantity),
-            size: item.size || 'Universal Size'
-          };
-        });
-        setCartItems(formattedCart); // Overwrite/hydrate local side-panel cart state
-      }
-
-      // 2. Fetch saved Wishlist records
-      const { data: savedWish, error: wishErr } = await supabase
-        .from('user_wishlists')
-        .select('product:products(*)');
-
-      if (!wishErr && savedWish) {
-        // Collect product IDs into an array to activate local Heart state fills
-        const fullWishlistProducts: Product[] = savedWish
-        .map(w => (Array.isArray(w.product) ? w.product[0] : w.product))
-        .filter(Boolean) as Product[]; 
-        setWishlist(fullWishlistProducts); 
-      }
+      if (error) throw error;
+      console.log("Global inventory allocations synced to cloud database.");
     } catch (err) {
-      console.error("Failed to restore cloud user state metrics:", err);
-    }
-  }
-
-  loadSavedUserData();
-}, [user?.id]);
-
-  // 1. INITIAL SETUP: Seed the first history state when the app boots up
-useEffect(() => {
-  if (!window.history.state) {
-    window.history.replaceState({ page: currentPage, category: globalCategoryFilter, productId: selectedProduct?.id }, '', '');
-  }
-}, []);
-
-// 2. INTERCEPT ENGINE: Listen for the user hitting the browser's back/forward buttons
-useEffect(() => {
-  const handleHardwareNavigation = (event: PopStateEvent) => {
-    if (event.state) {
-      const { page, category, productId } = event.state;
-      
-      // Restore the historical page position smoothly
-      setCurrentPage(page || 'home');
-      setGlobalCategoryFilter(category || 'All');
-      
-      // If we are backing into a specific product detail look, find it in your local cache/state
-      if (productId) {
-        const foundProd = products.find(p => p.id === productId); // Replace with your master products array variable
-        setSelectedProduct(foundProd || null);
-      } else {
-        setSelectedProduct(null);
-      }
-    } else {
-      // Baseline safety catch-all
-      setCurrentPage('home');
-      setGlobalCategoryFilter('All');
-      setSelectedProduct(null);
+      console.error("Database sync failed:", err);
     }
   };
 
-  window.addEventListener('popstate', handleHardwareNavigation);
-  return () => window.removeEventListener('popstate', handleHardwareNavigation);
-}, [products]); // Make sure this array dependency matches your data loading variable name
-
-// 3. SYNCHRONIZATION POINT: Whenever your code changes views via clicks, log a checkpoint
-const navigateToView = (
-  targetPage: "collection" | "home" | "auth" | "profile" | "checkout" | "admin" | "product-details" | "wishlist", 
-  targetCategory: string = 'All', targetProduct: any = null, replace: boolean = false) => {
-  setCurrentPage(targetPage);
-  setGlobalCategoryFilter(targetCategory);
-  setSelectedProduct(targetProduct);
-  
-  const stateBlueprint = { 
-    page: targetPage, 
-    category: targetCategory, 
-    productId: targetProduct?.id || null 
+  // 3. CLOSE DRAWER TRIGGER
+  const handleCloseDrawer = () => {
+    setIsCartOpen(false);
+    handleSyncCartToDatabase(cartItems); // Sync everything to DB upon closing
   };
 
-  if (replace) {
-    // Overwrite the current history slot so the back button skips this page
-    window.history.replaceState(stateBlueprint, '', '');
-  } else {
-    // Standard navigation tracking step
-    window.history.pushState(stateBlueprint, '', '');
-  }
-};
+  const handleCheckoutTrigger = () => {
+    handleSyncCartToDatabase(cartItems); // Sync everything to DB before navigating to checkout
+    navigateToView('checkout', 'All', null);
+    setIsCartOpen(false);
+  };
+
+  const handleRemoveCartItem = (indexToRemove: number) => {
+    setCartItems(prev => prev.filter((_, idx) => idx !== indexToRemove));
+  };
 
   return (
-    <div className="min-h-screen bg-[#faf9f6] text-stone-900 antialiased selection:bg-stone-200">
+    <div className="min-h-screen flex flex-col bg-[#faf9f6] text-stone-900 antialiased selection:bg-stone-200">
       
       {/* 1. TOP MARQUEE ANNOUNCEMENT */}
       <div className="bg-stone-950 text-[#f5f2eb] text-[10px] tracking-[0.25em] uppercase py-2.5 px-4 text-center font-sans font-light border-b border-stone-800">
-        Complimentary Insured Courier Delivery Worldwide &mdash; Aura Atelier
+        🎉 Enjoy curated pricing revisions on select jewelry sets for a limited time 🎉
       </div>
 
       {/* 2. STICKY EDITORIAL NAVIGATION */}
-      <nav className="sticky top-0 z-50 backdrop-blur-md bg-[#faf9f6]/85 border-b border-stone-200/40 px-8 py-4 flex justify-between items-center transition-all duration-300 select-none">
-        <div className="flex-1 flex items-center gap-6">
-          <Menu size={18} strokeWidth={1.2} className="cursor-pointer text-stone-600 hover:text-stone-950 transition-colors" />
-          <div className="hidden md:flex items-center gap-6 text-[11px] tracking-[0.2em] uppercase font-sans font-light text-stone-600">
-            <span onClick={() => navigateToView('collection', 'All', null)} className="cursor-pointer hover:text-stone-950 transition-colors">All Collections</span>
-          </div>
+      <nav className="sticky lg:relative top-0 z-50 backdrop-blur-md bg-[#faf9f6]/85 border-b border-stone-200/40 px-6 md:px-8 py-4 flex justify-between items-center select-none">
+        
+        {/* DESKTOP LINKS ONLY (Hidden on Mobile) */}
+        <div className="hidden lg:flex flex-1 items-center gap-6 text-[11px] tracking-[0.2em] uppercase font-sans font-light text-stone-600">
+          <span onClick={() => navigateToView('collection', 'All', null)} className="cursor-pointer hover:text-stone-950 transition-colors">Collections</span>
+          <span onClick={() => navigateToView('about')} className="cursor-pointer hover:text-stone-950 transition-colors">About</span>
+          <span onClick={() => navigateToView('contact')} className="cursor-pointer hover:text-stone-950 transition-colors">Contact</span>
+          <span onClick={() => navigateToView('faq')} className="cursor-pointer hover:text-stone-950 transition-colors">FAQ</span>
         </div>
 
-        <h1 
-          className="font-serif text-2xl tracking-[0.3em] uppercase text-stone-950 text-center cursor-pointer select-none" 
-          onClick={() => navigateToView('home', 'All', null)}
+        <button 
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="cursor-pointer text-stone-600 hover:text-stone-950 transition-colors focus:outline-none py-2 lg:hidden"
+          aria-label="Toggle Navigation Drawer"
         >
-          Aura
-        </h1>
+          {isMobileMenuOpen ? <X size={19} strokeWidth={1.3} /> : <Menu size={19} strokeWidth={1.3} />}
+        </button>
 
-        <div className="flex-1 flex items-center justify-end gap-5 text-stone-600">
-          <div className="hidden sm:flex items-center gap-1.5 h-7 cursor-pointer hover:text-stone-950 transition-colors">
-            <MapPin size={13} strokeWidth={1.3} />
-            <span className="text-[10px] tracking-widest uppercase font-sans font-light pt-px">Boutiques</span>
-          </div>
+        {/* LOGO: Always centered on all screen formats */}
+        <div className="lg:flex-1 text-center md:text-center">
+          <h1 
+            className="font-serif text-2xl tracking-[0.2em] uppercase text-stone-950 inline-block cursor-pointer" 
+            onClick={() => handleMobileNavClick('home', 'All', null)}
+          >
+            Aura
+          </h1>
+        </div>
 
+        <div className="flex lg:flex-1  items-center justify-end gap-4 text-stone-600">
           <div className="relative flex items-center h-7">
             {user ? (
               user.email === 'harshiqatest@gmail.com' ? (
-                <button 
+                <button
                   onClick={() => navigateToView('admin', 'All', null)}
                   className="flex items-center gap-2 text-[10px] tracking-widest uppercase font-sans font-medium text-amber-800 hover:text-stone-950 transition-colors cursor-pointer group outline-none"
-                  title="Access Atelier Management Terminal"
+                  title="Access Aura Management Terminal"
                 >
                   <span className="w-2 h-2 rounded-full bg-amber-600 animate-pulse" />
                   <span>Dashboard</span>
@@ -352,7 +420,7 @@ const navigateToView = (
                     onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
                     className="flex items-center gap-1 hover:text-stone-950 transition-colors cursor-pointer outline-none"
                   >
-                    <div className="w-6 h-6 rounded-full bg-stone-900 border border-stone-950 flex items-center justify-center text-stone-100 text-[9px] font-sans font-medium uppercase tracking-normal">
+                    <div className="w-6 h-6 rounded-full bg-stone-900 border border-stone-950 flex items-center justify-center text-stone-100 text-[9px] font-sans font-medium uppercase">
                       {firstName ? firstName.charAt(0) : user.email.charAt(0)}
                     </div>
                     <span className="text-[8px] text-stone-400 scale-85">▼</span>
@@ -361,7 +429,7 @@ const navigateToView = (
                   {isProfileMenuOpen && (
                     <>
                       <div className="fixed inset-0 z-30" onClick={() => setIsProfileMenuOpen(false)} />
-                      <div className="absolute right-0 top-full mt-3 w-48 bg-white border border-stone-200 rounded-xs shadow-xl py-1 z-40 text-left overflow-hidden">
+                      <div className="absolute right-0 top-full mt-3 w-48 bg-white border border-stone-200 rounded-xs shadow-xl py-1 z-40 text-left transition-all duration-300 ease-in-out overflow-hidden">
                         <div className="px-4 py-2 border-b border-stone-100">
                           <p className="text-[10px] font-sans tracking-wider uppercase text-stone-400">Account</p>
                           <p className="text-xs font-sans font-medium text-stone-900 truncate mt-0.5">
@@ -380,7 +448,7 @@ const navigateToView = (
                             setUser(null);
                             setCartItems([]);
                             setWishlist([]);
-                            navigateToView('home', 'All', null, true);
+                            navigateToView('home', undefined, null, true);
                             setIsProfileMenuOpen(false);
                           }}
                           className="w-full text-left px-4 py-2.5 text-xs font-sans text-red-700 hover:bg-red-50/40 transition-colors cursor-pointer border-t border-stone-100"
@@ -394,27 +462,51 @@ const navigateToView = (
               )
             ) : (
               <button 
-                onClick={() => navigateToView('auth', 'All', null)}
+                onClick={() => navigateToView('auth', 'All', null, true)}
                 className="text-[10px] tracking-widest uppercase font-sans font-light hover:text-stone-950 transition-colors cursor-pointer h-full"
               >
                 Sign In
               </button>
             )}
           </div>
-
-          <div className="relative cursor-pointer hover:text-stone-950 transition-colors flex items-center justify-center w-6 h-7" onClick={() => navigateToView('wishlist')}>
+          <div className="cursor-pointer hover:text-stone-950 transition-colors" onClick={() => navigateToView('wishlist')}>
             <Heart size={17} strokeWidth={1.2} />
-            {wishlist.length > 0 && (
-              <span className="absolute -top-0.5 -right-1.5 bg-[#c5a880] text-white text-[8px] w-3.5 h-3.5 rounded-full flex items-center justify-center font-sans font-medium shadow-xs">
-                {wishlist.length}
-              </span>
-            )}
           </div>
-
-          <div className="relative cursor-pointer hover:text-stone-950 transition-colors flex items-center justify-center w-6 h-7" onClick={() => setIsCartOpen(true)}>
+          <div className="cursor-pointer hover:text-stone-950 transition-colors" onClick={() => setIsCartOpen(true)}>
             <ShoppingBag size={17} strokeWidth={1.2} />
-            <span className="absolute -top-0.5 -right-1.5 bg-stone-950 text-white text-[8px] w-3.5 h-3.5 rounded-full flex items-center justify-center font-sans font-medium shadow-xs">
-              {cartItems.reduce((acc, item) => acc + item.quantity, 0)}
+          </div>
+        </div>
+
+        {/* MOBILE EXPANSION NAV DROPDOWN CANVAS */}
+        <div 
+          className={`absolute top-full right-0 left-0 w-full bg-[#faf9f6] border-b border-stone-200 z-40 transition-all duration-300 ease-in-out lg:hidden overflow-hidden ${
+            isMobileMenuOpen ? 'max-h-64 opacity-100 shadow-lg' : 'max-h-0 opacity-0 pointer-events-none'
+          }`}
+        >
+          <div className="flex flex-col px-8 py-6 space-y-4 font-sans text-xs tracking-[0.2em] uppercase font-light text-stone-600">
+            <span 
+              onClick={() => handleMobileNavClick('collection', 'All', null)} 
+              className="cursor-pointer hover:text-stone-950 transition-colors py-1.5 border-b border-stone-100/50"
+            >
+              Collections
+            </span>
+            <span 
+              onClick={() => handleMobileNavClick('about')} 
+              className="cursor-pointer hover:text-stone-950 transition-colors py-1.5 border-b border-stone-100/50"
+            >
+              About
+            </span>
+            <span 
+              onClick={() => handleMobileNavClick('contact')} 
+              className="cursor-pointer hover:text-stone-950 transition-colors py-1.5 border-b border-stone-100/50"
+            >
+              Contact
+            </span>
+            <span 
+              onClick={() => handleMobileNavClick('faq')} 
+              className="cursor-pointer hover:text-stone-950 transition-colors py-1.5 pb-2"
+            >
+              FAQ
             </span>
           </div>
         </div>
@@ -428,7 +520,6 @@ const navigateToView = (
             user={user}
             onOrderPlacedSuccess={() => {
               setCartItems([]);
-              // alert("Order Successfully Authorized and Processed!");
             }}
             navigateToView={navigateToView}
           />
@@ -437,11 +528,9 @@ const navigateToView = (
             product={selectedProduct}
             wishlist={wishlist}
             user={user}
+            cartItems={cartItems}
             onToggleWishlist={handleToggleWishlist}
-            onAddToBag={(quantity, size) => {
-              setCartItems(prev => [...prev, { product: selectedProduct, quantity, size }]);
-              setIsCartOpen(true);
-            }}
+            onAddToBag={onAddToBag}
             navigateToView={navigateToView}
           />
         ) : currentPage === 'auth' ? (
@@ -461,7 +550,6 @@ const navigateToView = (
           <AdminDashboard navigateToView={navigateToView} />
         ) : currentPage === 'collection' ? (
           <CollectionList 
-            onSelectProduct={(prod) => setSelectedProduct(prod)} 
             initialCategory={globalCategoryFilter || 'All'}
             navigateToView={navigateToView}
           />
@@ -472,9 +560,29 @@ const navigateToView = (
             onToggleWishlist={handleToggleWishlist} 
             navigateToView={navigateToView} 
           />
+        ) : currentPage === 'about' ? (
+          <About
+            navigateToView={navigateToView} 
+          />
+        ) : currentPage === 'contact' ? (
+          <Contact
+            user={user}
+          />
+        ) : currentPage === 'faq' ? (
+          <Faq/>
+        ) : currentPage === 'privacy-policy' ? (
+          <PrivacyPolicy/>
+        ) : currentPage === 'terms-of-service' ? (
+          <TermsOfService/>
+        ) : currentPage === 'return-and-refund' ? (
+          <ReturnAndRefund/>
+        ) : currentPage === 'shipping-delivery' ? (
+          <ShippingDelivery/>
+        ) : currentPage === 'cancellation-refund' ? (
+          <CancellationRefund/>
         ) : (
           <>
-            {/* 3. HERO LOOKBOOK BLOCK */}
+            {/* HERO LOOKBOOK BLOCK */}
             <section className="relative h-[85vh] w-full overflow-hidden bg-stone-950 flex items-center">
               <div className="absolute inset-0 z-0 bg-stone-950">
                 <img 
@@ -504,7 +612,7 @@ const navigateToView = (
                   </p>
                   <div className="pt-4">
                     <button onClick={() => navigateToView('collection', 'All', null)}
-                    className="group flex items-center gap-4 bg-[#f5f2eb] text-stone-950 px-8 py-4 text-[11px] tracking-[0.25em] uppercase hover:bg-[#c5a880] hover:text-white transition-all duration-300 shadow-md">
+                    className="group flex items-center gap-4 bg-[#f5f2eb] text-stone-950 px-8 py-4 text-[10px] sm:text-[11px] tracking-[0.25em] uppercase hover:bg-[#c5a880] hover:text-white transition-all duration-300 shadow-md">
                       Explore The Collection 
                       <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
                     </button>
@@ -513,14 +621,12 @@ const navigateToView = (
               </div>
             </section>
 
-            {/* ==========================================
-                 NEW ARRIVALS
-               ========================================== */}
+            {/* NEW ARRIVALS */}
             <section className="bg-white py-24">
               <div className="max-w-7xl w-full mx-auto px-8 space-y-12">
                 <div className="text-center space-y-2">
                   <div className="flex items-center justify-center gap-1.5 text-[#c5a880] text-[10px] tracking-[0.3em] uppercase font-medium">
-                    <Sparkles size={10} /> Fresh From The Atelier
+                    <Sparkles size={10} /> Fresh From The Vault
                   </div>
                   <h3 className="font-serif text-3xl uppercase tracking-wider text-stone-900 font-light">New Arrivals</h3>
                   <p className="text-xs text-stone-400 italic max-w-md mx-auto font-sans leading-relaxed">
@@ -543,7 +649,7 @@ const navigateToView = (
                           <div className="text-[9px] tracking-[0.2em] font-sans uppercase text-stone-400">{product.category}</div>
                           <h4 className="font-serif text-base text-stone-900 group-hover:text-[#c5a880] transition-colors truncate font-light tracking-wide">{product.name}</h4>
                           <div className="pt-2 flex justify-between items-center text-xs font-sans border-t border-stone-100 mt-2">
-                            <span className="text-stone-950 font-medium">${product.price.toLocaleString()}</span>
+                            <span className="text-stone-950 font-medium">₹{product.price.toLocaleString()}</span>
                             <span className="text-[9px] tracking-[0.15em] uppercase text-stone-400 group-hover:text-stone-950 flex items-center gap-1">View Details <ArrowRight size={10} /></span>
                           </div>
                         </div>
@@ -556,14 +662,12 @@ const navigateToView = (
               </div>
             </section>
 
-            {/* ==========================================
-                 7-DAY CAPSULE
-                ========================================== */}
+            {/* 7-DAY CAPSULE */}
               {rotationShowcase && (
                 <section className="w-full bg-[#faf9f6] py-20 px-8 border-b border-stone-200/30 overflow-hidden">
                   <div className="grid grid-cols-1 md:grid-cols-12 items-stretch min-h-120">
-                    {/* Visual Asset Block (Now on Left) */}
-                    <div className="md:col-span-7 bg-stone-50 relative overflow-hidden min-h-87.5 md:min-h-full border-b md:border-b-0 md:border-r border-stone-200/30">
+                    {/* Visual Asset Block */}
+                    <div className="md:col-span-6 bg-stone-50 relative overflow-hidden min-h-87.5 md:min-h-full border-b md:border-b-0 md:border-r border-stone-200/30">
                       {rotationShowcase.coverImage ? (
                         <img 
                           src={rotationShowcase.coverImage} 
@@ -577,8 +681,8 @@ const navigateToView = (
                       )}
                     </div>
 
-                  {/* Editorial Text Block (Now on Right) */}
-                  <div className="md:col-span-5 p-12 lg:p-20 space-y-6 flex flex-col justify-center bg-[#faf9f6]/40">
+                  {/* Editorial Text Block */}
+                  <div className="md:col-span-6 md:p-12 py-10 px-5 lg:p-20 space-y-6 flex flex-col justify-center bg-[#faf9f6]/40">
                     <div className="space-y-1.5">
                       <span className="text-[10px] font-sans tracking-[0.3em] uppercase text-[#c5a880] font-semibold block">
                         Weekly Curation Focus
@@ -603,9 +707,7 @@ const navigateToView = (
               </section>
             )}
 
-            {/* ==========================================
-                 BEST SELLING SECTION
-               ========================================== */}
+            {/* BEST SELLING SECTION */}
             <section className="bg-white py-24 border-t border-stone-200/40">
               <div className="max-w-7xl w-full mx-auto px-8 space-y-12">
                 <div className="text-center space-y-2">
@@ -638,7 +740,7 @@ const navigateToView = (
                             <h4 className="font-serif text-base text-stone-900 group-hover:text-[#c5a880] transition-colors truncate font-light tracking-wide">{product.name}</h4>
                             <div className="pt-2 flex justify-between items-center text-xs font-sans border-t border-stone-100 mt-2">
                               <div className="flex items-center gap-1.5">
-                                <span className="text-stone-950 font-medium">${Math.round(finalPrice).toLocaleString()}</span>
+                                <span className="text-stone-950 font-medium">₹{Math.round(finalPrice).toLocaleString()}</span>
                                 {hasDiscount ? <span className="text-[9px] text-emerald-700 bg-emerald-50 px-1 rounded-3xs">(-{product.discount_rate}%)</span> : null}
                               </div>
                               <span className="text-[9px] tracking-[0.15em] uppercase text-stone-400 group-hover:text-stone-950 flex items-center gap-1">View <ArrowRight size={10} /></span>
@@ -655,9 +757,9 @@ const navigateToView = (
             </section>
 
             {/* MINIMAL ARCHITECTURAL NEWSLETTER PORTAL */}
-            <section className="bg-stone-950 text-[#f5f2eb] py-24 border-t border-stone-900">
+            <section className="bg-stone-950 text-[#f5f2eb] pt-24 pb-8 lg:pb-24 border-t border-stone-900">
               <div className="max-w-2xl mx-auto px-8 text-center space-y-6">
-                <p className="text-[10px] font-sans tracking-[0.3em] uppercase text-[#c5a880]">Atelier Invitations</p>
+                <p className="text-[10px] font-sans tracking-[0.3em] uppercase text-[#c5a880]">Aura Invitations</p>
                 <h4 className="font-serif text-2xl md:text-3xl uppercase tracking-widest font-light">Don't Miss a Drop</h4>
                 <p className="font-sans text-xs text-stone-400 font-light max-w-md mx-auto leading-relaxed tracking-wide">
                   Get immediate notifications on new releases, upcoming local gallery exhibitions, and secret markdown sales.
@@ -680,32 +782,34 @@ const navigateToView = (
         )}
       </main>
 
-      {/* 8. MAISON FOOTER BASE */}
+      {/* FOOTER BASE */}
       <footer className="bg-stone-950 text-stone-500 border-t border-stone-900 px-8 py-8">
-        <div className="max-w-7xl w-full mx-auto flex flex-col sm:flex-row justify-between items-center gap-4 text-center sm:text-left">
+        <div className="max-w-7xl w-full mx-auto flex flex-col-reverse lg:flex-row justify-between items-center gap-4 text-center lg:text-left">
           <p className="font-sans text-[9px] tracking-[0.25em] uppercase text-stone-500">
-            &copy; 2026 Aura Atelier Inc. High-End Portfolio Framework &mdash; By Harshita Jain
+            &copy; 2026 Aura Inc. High-End Portfolio Framework &mdash; By Harshita Jain
           </p>
-          <div className="flex gap-6 text-[9px] tracking-[0.2em] uppercase font-sans font-light text-stone-500">
-            <span className="hover:text-[#f5f2eb] cursor-pointer transition-colors">Privacy Privacy</span>
-            <span className="hover:text-[#f5f2eb] cursor-pointer transition-colors">Terms of Care</span>
+          <span className="h-[0.5px] w-full bg-stone-500 block lg:hidden" />
+          <div className="flex flex-col md:flex-row gap-6 text-[9px] tracking-[0.2em] uppercase font-sans font-light text-stone-500">
+            <span onClick={() => navigateToView('privacy-policy')} className="hover:text-[#f5f2eb] cursor-pointer transition-colors">Privacy Policy</span>
+            <span onClick={() => navigateToView('terms-of-service')} className="hover:text-[#f5f2eb] cursor-pointer transition-colors">Terms of Service</span>
+            <span onClick={() => navigateToView('return-and-refund')} className="hover:text-[#f5f2eb] cursor-pointer transition-colors">Return & Exchange Policy</span>
+            <span onClick={() => navigateToView('shipping-delivery')} className="hover:text-[#f5f2eb] cursor-pointer transition-colors">Shipping & Delivery</span>
+            <span onClick={() => navigateToView('cancellation-refund')} className="hover:text-[#f5f2eb] cursor-pointer transition-colors">Cancellation & Refund Policy</span>
           </div>
         </div>
       </footer>
 
       <CartDrawer 
         isOpen={isCartOpen} 
-        onClose={() => setIsCartOpen(false)} 
+        onClose={handleCloseDrawer} 
         cartItems={cartItems} 
-        onRemoveItem={handleRemoveCartItem} 
+        onRemoveItem={handleRemoveCartItem}
+        setCartItems={setCartItems}
         onNavigateToCollection={() => {
           navigateToView('collection', 'All', null);
           setIsCartOpen(false);
         }} 
-        onCheckoutTrigger={() => {
-          navigateToView('checkout', 'All', null);
-          setIsCartOpen(false);
-        }}
+        onCheckoutTrigger={handleCheckoutTrigger}
         user={user}
       />
     </div>
