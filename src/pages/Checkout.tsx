@@ -187,7 +187,7 @@ function CheckoutFormInterior({ cartItems, user, onOrderPlacedSuccess, navigateT
       if (stripeError) throw new Error(stripeError.message);
 
       if (paymentIntent && paymentIntent.status === 'succeeded') {
-        const { error: dbError } = await supabase
+        const { data: newOrder, error: dbError } = await supabase
           .from('orders')
           .insert([{
             user_id: user?.id || null,
@@ -205,9 +205,23 @@ function CheckoutFormInterior({ cartItems, user, onOrderPlacedSuccess, navigateT
             },
             total_paid: totalAmount,
             stripe_payment_id: paymentIntent.id
-          }]);
+          }])
+          .select('id, guest_token, total_paid, user_email')
+          .single();
 
-        if (dbError) throw new Error(`Database record failed: ${dbError.message}`);
+        if (dbError) {
+          console.error("Database insert error:", dbError);
+        } else if (newOrder) {
+          supabase.functions.invoke('send-guest-order', {
+            body: {
+              email: newOrder.user_email,
+              orderId: newOrder.id,
+              guestToken: newOrder.guest_token, 
+              totalAmount: newOrder.total_paid,
+              isGuest: !user
+            }
+          });
+        }
 
         try {
         for (const item of cartItems) {          

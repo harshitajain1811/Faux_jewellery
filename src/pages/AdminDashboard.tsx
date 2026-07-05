@@ -38,7 +38,7 @@ export default function AdminDashboard({ navigateToView }: AdminDashboardProps) 
   const [orderStatusFilter, setOrderStatusFilter] = useState('ALL');
   const [orderDaysFilter, setOrderDaysFilter] = useState('ALL');
   const [ordersCurrentPage, setOrdersCurrentPage] = useState(1);
-  const ordersPerPage = 10;
+  const ordersPerPage = 20;
 
 // Fetch function to load order logs directly from Supabase
 const fetchOrders = async () => {
@@ -71,7 +71,7 @@ useEffect(() => {
 
   // Core Options Cache
   const dynamicCategories = useMemo(() => {
-    const set = new Set<string>(['Rings', 'Necklaces', 'Earrings', 'Bracelets']);
+    const set = new Set<string>(['Necklaces', 'Earrings']);
     products.forEach(p => { if (p.category) set.add(p.category); });
     return Array.from(set);
   }, [products]);
@@ -448,6 +448,8 @@ useEffect(() => {
                 <option value="pending">Pending</option>
                 <option value="shipped">Shipped</option>
                 <option value="delivered">Delivered</option>
+                <option value="return_requested">Return Requested</option>
+                <option value="returned">Returned</option>
                 <option value="cancelled">Cancelled</option>
               </select>
               <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-stone-400 text-[8px]">▼</div>
@@ -608,11 +610,13 @@ useEffect(() => {
                               
                               {/* Fulfillment Status Labels Matrix badge styling rendering options */}
                               <td className="p-4 font-sans">
-                                <span className={`px-2 py-0.5 rounded-xs text-[10px] font-medium uppercase tracking-wider ${
-                                  ord.status === 'delivered' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/30' :
-                                  ord.status === 'cancelled' ? 'bg-red-50 text-red-600' :
-                                  ord.status === 'shipped' ? 'bg-blue-50 text-blue-700' :
-                                  'bg-stone-100 text-stone-600'
+                                <span className={`px-2 py-0.5 rounded-xs text-[10px] font-medium uppercase border tracking-wider ${
+                                  ord.status === 'delivered' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                  ord.status === 'cancelled' ? 'bg-red-50 text-red-600 border-red-200' :
+                                  ord.status === 'returned' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                  ord.status === 'return_requested' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                                  ord.status === 'shipped' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                  'bg-stone-100 text-stone-600 border-stone-200'
                                 }`}>
                                   {ord.status || 'pending'}
                                 </span>
@@ -635,6 +639,7 @@ useEffect(() => {
                                     <option value="Pending">Pending</option>
                                     <option value="Shipped">Shipped</option>
                                     <option value="Delivered">Delivered</option>
+                                    <option value="Returned">Returned</option>
                                     <option value="Cancelled">Cancelled</option>
                                   </select>
                                 </div>
@@ -865,7 +870,7 @@ useEffect(() => {
                   <option value="ADD_NEW">+ Create Custom Type...</option>
                 </select>
                 {productForm.category === 'ADD_NEW' && (
-                  <input required type="text" placeholder="Specify Category Name" value={productForm.newCategory} onChange={(e) => setProductForm(p=>({...p, newCategory: e.target.value}))} className="w-full bg-white border border-stone-200 p-2 mt-1.5 text-xs rounded-xs outline-none text-stone-900 border-amber-600" />
+                  <input required type="text" placeholder="Specify Category Name" value={productForm.newCategory} onChange={(e) => setProductForm(p=>({...p, newCategory: e.target.value}))} className="w-full bg-white border p-2 mt-1.5 text-xs rounded-xs outline-none text-stone-900 border-amber-600" />
                 )}
               </div>
 
@@ -876,7 +881,7 @@ useEffect(() => {
                   <option value="ADD_NEW">+ Create Custom Tone...</option>
                 </select>
                 {productForm.polish === 'ADD_NEW' && (
-                  <input required type="text" placeholder="Specify Polish Name" value={productForm.newPolish} onChange={(e) => setProductForm(p=>({...p, newPolish: e.target.value}))} className="w-full bg-white border border-stone-200 p-2 mt-1.5 text-xs rounded-xs outline-none text-stone-900 border-amber-600" />
+                  <input required type="text" placeholder="Specify Polish Name" value={productForm.newPolish} onChange={(e) => setProductForm(p=>({...p, newPolish: e.target.value}))} className="w-full bg-white border p-2 mt-1.5 text-xs rounded-xs outline-none text-stone-900 border-amber-600" />
                 )}
               </div>
             </div>

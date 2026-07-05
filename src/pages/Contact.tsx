@@ -3,15 +3,14 @@ import { supabase } from '../lib/supabaseClient';
 import { Mail, Phone, MapPin, ArrowRight, Sparkles, Loader2 } from 'lucide-react';
 
 interface ContactProps {
-  // Accepts the same user state object passed to your Profile page
   user: { id: string; email: string } | null;
 }
 
 export default function Contact({ user }: ContactProps) {
-  const [isTransmitted, setIsTransmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  const [feedback, setFeedback] = useState<{ status: 'success' | 'error'; text: string } | null>(null);
   
-  // Dynamic form state management
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -19,11 +18,10 @@ export default function Contact({ user }: ContactProps) {
     message: ''
   });
 
-  // Pull profile name settings from public.profiles whenever user context changes
+  // Pull profile name settings whenever user context changes
   useEffect(() => {
     async function syncProfileData() {
       if (!user?.id) {
-        // Fallback or clear form values if logged out
         setFormData(prev => ({ ...prev, name: '', email: '' }));
         return;
       }
@@ -31,7 +29,6 @@ export default function Contact({ user }: ContactProps) {
       try {
         setIsLoadingProfile(true);
         
-        // Match the database table syntax from your user profile page
         const { data: profileData } = await supabase
           .from('profiles')
           .select('first_name, last_name')
@@ -45,7 +42,7 @@ export default function Contact({ user }: ContactProps) {
         setFormData(prev => ({
           ...prev,
           name: assembledFullName,
-          email: user.email || '' // Seed directly from auth database object
+          email: user.email || '' 
         }));
       } catch (err) {
         console.error("Error setting customer credentials for workspace form layout:", err);
@@ -62,18 +59,46 @@ export default function Contact({ user }: ContactProps) {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleMessageDispatch = (e: React.SyntheticEvent) => {
-    e.preventDefault();
-    // Your contact form transmission/API dispatch logic goes here
-    setIsTransmitted(true);
-  };
+  // Handle form submission
+  const handleMessageDispatch = async (e: React.SyntheticEvent) => {
+  e.preventDefault();
+  setLoading(true);
+  setFeedback(null);
+
+  try {
+    const insertPayload = {
+      user_id: user?.id || null,
+      name: formData.name,
+      email: formData.email,
+      subject: formData.subject,
+      message: formData.message
+    };
+
+    const { error } = await supabase
+      .from('contact_submissions')
+      .insert([insertPayload])
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    setFeedback({ status: 'success', text: "Message sent! We'll get back to you shortly." });
+    setFormData({ name: '', email: '', subject: '', message: '' });
+
+  } catch (err: any) {
+    console.error("Database Write Error:", err);
+    setFeedback({ status: 'error', text: `Submission failed: ${err.message}` });
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-[#faf9f6] text-stone-950 select-none animate-in fade-in duration-500">
       <div className="max-w-6xl mx-auto px-8 md:px-12 py-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-start">
           
-          {/* LEFT CONCIERGE INFORMATION SIDEBAR */}
+          {/* LEFT INFORMATION SIDEBAR */}
           <div className="lg:col-span-5 space-y-12 lg:sticky lg:top-32">
             <div className="space-y-4">
               <div className="flex items-center gap-2">
@@ -86,7 +111,7 @@ export default function Contact({ user }: ContactProps) {
                 Connect With Us.
               </h1>
               <p className="font-sans text-xs md:text-sm leading-relaxed text-stone-500 font-light tracking-wide">
-                For immediate order tracking, tailored corporate gifting allocations, or customized sizing guidance, consult our concierge response network.
+                For immediate order tracking, tailored corporate gifting allocations, or customized sizing guidance, consult our aura response network.
               </p>
             </div>
 
@@ -95,7 +120,7 @@ export default function Contact({ user }: ContactProps) {
                 <Mail size={16} className="text-[#c5a880] shrink-0 mt-0.5" />
                 <div className="space-y-0.5">
                   <span className="text-[9px] tracking-[0.2em] text-stone-400 uppercase block font-semibold">Digital Mailbox</span>
-                  <a href="mailto:concierge@yourbrand.com" className="hover:text-[#c5a880] transition-colors text-stone-950">concierge@yourbrand.com</a>
+                  <a href="mailto:contactstore@aura.com" className="hover:text-[#c5a880] transition-colors text-stone-950">contactstore@aura.com</a>
                 </div>
               </div>
 
@@ -128,14 +153,6 @@ export default function Contact({ user }: ContactProps) {
               </div>
             )}
 
-            {isTransmitted ? (
-              <div className="py-20 text-center space-y-4 animate-in fade-in duration-300">
-                <h3 className="font-serif text-2xl tracking-wide uppercase font-light text-[#c5a880]">Securely Dispatched</h3>
-                <p className="font-sans text-xs text-stone-500 font-light max-w-xs mx-auto leading-relaxed">
-                  Your inquiry message has passed registry authorization. An operational manager will correspond back within 24 hours.
-                </p>
-              </div>
-            ) : (
               <form onSubmit={handleMessageDispatch} className="space-y-8">
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-1">
@@ -146,10 +163,7 @@ export default function Contact({ user }: ContactProps) {
                       name="name"
                       value={formData.name}
                       onChange={handleInputChange}
-                      disabled={!!user?.id && formData.name.length > 0} 
-                      className={`w-full bg-transparent border-b border-stone-200 focus:border-[#c5a880] py-2 text-xs font-sans text-stone-900 outline-none transition-colors ${
-                        user?.id && formData.name.length > 0 ? 'text-stone-400 cursor-not-allowed border-stone-100' : ''
-                      }`} 
+                      className= "w-full bg-transparent border-b border-stone-200 focus:border-[#c5a880] py-2 text-xs font-sans text-stone-900 outline-none transition-colors"
                     />
                   </div>
                   <div className="space-y-1">
@@ -160,10 +174,7 @@ export default function Contact({ user }: ContactProps) {
                       name="email"
                       value={formData.email}
                       onChange={handleInputChange}
-                      disabled={!!user?.email} 
-                      className={`w-full bg-transparent border-b border-stone-200 focus:border-[#c5a880] py-2 text-xs font-sans text-stone-900 outline-none transition-colors ${
-                        user?.email ? 'text-stone-400 cursor-not-allowed border-stone-100' : ''
-                      }`} 
+                      className="w-full bg-transparent border-b border-stone-200 focus:border-[#c5a880] py-2 text-xs font-sans text-stone-900 outline-none transition-colors"
                     />
                   </div>
                 </div>
@@ -194,13 +205,16 @@ export default function Contact({ user }: ContactProps) {
                   />
                 </div>
 
-                <button type="submit" className="group flex items-center gap-4 bg-stone-950 text-[#f5f2eb] px-8 py-4 text-[11px] tracking-[0.25em] uppercase hover:bg-[#c5a880] hover:text-white transition-all duration-300 shadow-sm w-full justify-center cursor-pointer">
-                  Request Assistance <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                <button type="submit" disabled={loading} className="group flex items-center gap-4 bg-stone-950 text-[#f5f2eb] px-8 py-4 text-[11px] tracking-[0.25em] uppercase hover:bg-[#c5a880] hover:text-white transition-all duration-300 shadow-sm w-full justify-center cursor-pointer">
+                  {loading ? 'Processing Dispatch...' : 'Request Assistance'} <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
                 </button>
               </form>
-            )}
+              {feedback && (
+                <p className={`text-xs mt-2 text-center font-medium ${feedback.status === 'success' ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {feedback.text}
+                </p>
+              )}
           </div>
-
         </div>
       </div>
     </div>

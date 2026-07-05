@@ -46,7 +46,6 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
   const [similarProducts, setSimilarProducts] = useState<Product[]>([]);
   const [selectedQuantity, setSelectedQuantity] = useState<number>(1);
   const [showAuthMessage, setShowAuthMessage] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
 
   // 1. DYNAMIC CATEGORY SIZE STANDARD MATCHING
   const definedSizesMatrix = useMemo(() => {
@@ -169,9 +168,7 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
       if (error) throw error;
 
       // 2. Fallback Attempt: If category matching yielded fewer than 4 items, backfill using polish
-      if (!matches || matches.length < 4) {
-        const currentMatchIds = matches ? matches.map(m => m.id) : [];
-        
+      if (!matches || matches.length < 4) {        
         let fallbackQuery = supabase
           .from('products')
           .select('*')
@@ -215,68 +212,6 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
     fetchSimilar();
   }
 }, [product.id, product.category, product.polish]);
-
-  // 2. STOCK LIMIT CALCULATION FOR SELECTED VARIANT
-  // const maxAvailableStock = useMemo(() => {
-  //   if (!product.size_stock || !selectedSize) return 0;
-  //   // Safely return the numerical value from DB map record
-  //   return product.size_stock[selectedSize] ?? 0;
-  // }, [product.size_stock, selectedSize]);
-
-  // const existingItemInCart = cartItems?.find(
-  //   (item: any) => item.product.id === product.id && item.size === (selectedSize || 'Universal Size')
-  // );
-  // const currentQtyInCart = existingItemInCart ? existingItemInCart.quantity : 0;
-  // const isOutOfStock = maxAvailableStock <= 0;
-  // const isAtQuantityLimit = (selectedQuantity + currentQtyInCart) > maxAvailableStock;
-
-  // console.log('Existing item: ' + existingItemInCart + 'Current qty: ' + currentQtyInCart + 'Selected qty;  ' + selectedQuantity)
-  
-//   const handleBagAdditionSync = async () => {
-//   if (isNetOutOfStock) return;
-//   setIsSyncing(true);
-  
-//   try {
-//     const trueIncrementalNewQty = selectedQuantity > currentQtyInCart 
-//       ? selectedQuantity - currentQtyInCart 
-//       : selectedQuantity;
-
-//     const targetQuantity = currentQtyInCart + trueIncrementalNewQty;
-
-//     // 3. Stock safety validation check
-//     const maxAvailableStock = product.size_stock?.[selectedSize || 'Universal Size'] ?? 99;
-//     if (targetQuantity > maxAvailableStock) {
-//       alert(`The maximum allocation limit for this item is ${maxAvailableStock}. You already have ${currentQtyInCart} in your bag.`);
-//       setIsSyncing(false);
-//       // Optional: open your cart drawer here anyway to show them their cart status
-//       return;
-//     }
-//     console.log('Incr qty: ' + trueIncrementalNewQty + 'Current qty: ' + currentQtyInCart + 'selected qty: ' + selectedQuantity + 'target qty: ' + targetQuantity)
-
-//     // 4. Update your parent state structure with the combined total configuration
-//     onAddToBag(product, selectedQuantity, selectedSize || 'Universal Size');
-
-//     // 5. If logged in, upsert the COMBINED target quantity to remote DB storage
-//     if (user?.id) {
-//       const { error } = await supabase
-//         .from('user_carts')
-//         .upsert({
-//           user_id: user.id,
-//           product_id: product.id,
-//           size: selectedSize || 'Universal Size',
-//           quantity: targetQuantity // 👈 Crucial change: pass the combined sum, not just selected quantity!
-//         }, { onConflict: 'user_id,product_id,size' });
-
-//       if (error) throw error;
-//     }
-//   } catch (err) {
-//     console.error("Cart cloud sync rejection:", err);
-//   } finally {
-//     setIsSyncing(false);
-//   }
-// };
-
-  // Enforce safety limits if user changes sizes and previous quantity exceeds new max stock limits
   
   // Find the exact matching snapshot for THIS specific product variant inside the global cart
   const matchingCartItem = useMemo(() => {
@@ -285,8 +220,6 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
     );
   }, [cartItems, product.id, selectedSize]);
 
-  // CATCH-UP ACTION: When navigating back to this page, or when the drawer CLOSES, 
-  // catch up to the exact quantity that was left in the cart.
   useEffect(() => {
     if (matchingCartItem) {
       setSelectedQuantity(matchingCartItem.quantity);
@@ -328,7 +261,7 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
           {/* LEFT CONTAINER: Premium Image Viewer */}
           <div className="lg:col-span-7 sm:flex-row flex flex-col-reverse gap-4 lg:sticky lg:top-28">
             
-            {/* Extreme Left: Vertical Angle Thumbnails (Shown conditional to array records availability) */}
+            {/* Extreme Left: Vertical Angle Thumbnails */}
             {productSubImages.length > 0 && (
               <div className="space-y-3 flex sm:flex-col sm:w-[15%] gap-2">
                 {[product.main_image, ...productSubImages].map((imgUrl, index) => (
@@ -529,22 +462,19 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
 
               {/* ACTION BUTTONS */}
             <div className="space-y-3 pt-2">
-              {isNetOutOfStock && (
-                <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 text-red-800 bg-red-50/60 border border-red-200/40 rounded-xs p-3 text-xs font-sans tracking-wide"><AlertCircle size={14} className="shrink-0 text-red-700" /><span>This product is out of stock.</span></motion.div>
-              )}
 
               <div className="flex gap-4">
                 <button 
                   type="button"
-                  disabled={isNetOutOfStock || isSyncing} 
+                  disabled={isNetOutOfStock} 
                   onClick={() => onAddToBag(product, selectedQuantity, selectedSize)}
                   className={`grow group flex items-center justify-center gap-3 border px-8 py-4 text-xs tracking-widest uppercase transition-all duration-300 shadow-sm ${
-                    isNetOutOfStock || isSyncing
+                    isNetOutOfStock
                       ? "bg-stone-200 text-stone-400 border-stone-200 cursor-not-allowed" 
                       : "bg-stone-950 text-white border-stone-900 hover:bg-transparent hover:text-stone-950 cursor-pointer"
                   }`}
                 >
-                  {isSyncing ? "Syncing Aura Vault..." : "Acquire to Bag"}
+                  Acquire to Bag
                 </button>
                 
                 <button 

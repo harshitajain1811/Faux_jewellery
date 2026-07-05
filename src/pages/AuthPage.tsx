@@ -67,10 +67,10 @@ export default function AuthPage({ onAuthSuccess, navigateToView }: AuthPageProp
 
       if (mode === 'signup') {
         // Name validations (Must be greater than 3 characters long, i.e., <= 3 triggers error)
-        if (firstName.trim().length <= 3) {
+        if (firstName.trim().length < 3) {
           throw new Error("First name must be greater than 3 characters.");
         }
-        if (lastName.trim().length <= 3) {
+        if (lastName.trim().length < 3) {
           throw new Error("Last name must be greater than 3 characters.");
         }
 

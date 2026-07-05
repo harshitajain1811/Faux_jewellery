@@ -18,6 +18,7 @@ import TermsOfService from './pages/TermsOfService';
 import ReturnAndRefund from './pages/ReturnAndExchangePolicy';
 import ShippingDelivery from './pages/ShippingAndDelivery';
 import CancellationRefund from './pages/CancelAndRefundPolicy';
+import TrackOrder from './pages/TrackOrder';
 
 interface Product {
   id: string;
@@ -133,10 +134,10 @@ useEffect(() => {
   loadSavedUserData();
 }, [user?.id]);
   
-  const [currentPage, setCurrentPage] = useState<'home' | 'collection' | 'auth' | 'profile' | 'checkout' | 'admin' | 'product-details' | 'wishlist' | 'about' | 'contact' | 'faq' | 'privacy-policy' | 'terms-of-service' | 'return-and-refund' | 'shipping-delivery' | 'cancellation-refund'>('home');
+  const [currentPage, setCurrentPage] = useState<'home' | 'collection' | 'auth' | 'profile' | 'checkout' | 'admin' | 'product-details' | 'wishlist' | 'about' | 'contact' | 'faq' | 'privacy-policy' | 'terms-of-service' | 'return-and-refund' | 'shipping-delivery' | 'cancellation-refund' | 'track-order'>('home');
   //SYNCHRONIZATION POINT: Whenever your code changes views via clicks, log a checkpoint
   const navigateToView = (
-    targetPage: "home" | "collection" | "auth" | "profile" | "checkout" | "admin" | "product-details" | "wishlist" | "about" | "contact" | "faq" | "privacy-policy" | "terms-of-service" | "return-and-refund" | "shipping-delivery" | "cancellation-refund",
+    targetPage: "home" | "collection" | "auth" | "profile" | "checkout" | "admin" | "product-details" | "wishlist" | "about" | "contact" | "faq" | "privacy-policy" | "terms-of-service" | "return-and-refund" | "shipping-delivery" | "cancellation-refund" | "track-order",
     targetCategory: string = 'All', targetProduct: any = null, replace: boolean = false) => {
     setCurrentPage(targetPage);
     setGlobalCategoryFilter(targetCategory);
@@ -289,7 +290,6 @@ useEffect(() => {
         .eq('product_id', product.id);
         
     } else {
-      // 1. Immediately update UI state for a snappy experience
       setWishlist(prev => [...prev, product]);
 
       await supabase
@@ -311,12 +311,10 @@ useEffect(() => {
       );
 
       if (existingIdx > -1) {
-        // Exact Overwrite Rule: Carry forward the exact quantity from the page
         return prevItems.map((item, idx) => 
           idx === existingIdx ? { ...item, quantity } : item
         );
       } else {
-        // Fresh Add Rule
         return [...prevItems, { product, quantity, size }];
       }
     });
@@ -328,7 +326,6 @@ useEffect(() => {
     if (!user?.id) return; // Ignore for Guests (remains safe in global memory state)
 
     try {
-      // Format all current items for a single batch upsert query
       const upsertRows = currentCart.map(item => ({
         user_id: user.id,
         product_id: item.product.id,
@@ -352,11 +349,11 @@ useEffect(() => {
   // 3. CLOSE DRAWER TRIGGER
   const handleCloseDrawer = () => {
     setIsCartOpen(false);
-    handleSyncCartToDatabase(cartItems); // Sync everything to DB upon closing
+    handleSyncCartToDatabase(cartItems); 
   };
 
   const handleCheckoutTrigger = () => {
-    handleSyncCartToDatabase(cartItems); // Sync everything to DB before navigating to checkout
+    handleSyncCartToDatabase(cartItems); 
     navigateToView('checkout', 'All', null);
     setIsCartOpen(false);
   };
@@ -365,13 +362,110 @@ useEffect(() => {
     setCartItems(prev => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
+  const [urlParams, setUrlParams] = useState({ id: '', token: '' });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const targetPage = params.get('page');
+    const orderId = params.get('id');
+    const guestToken = params.get('token');
+
+    if (targetPage) {
+      navigateToView(targetPage as any);
+      if (orderId && guestToken) {
+        setUrlParams({ id: orderId, token: guestToken });
+      }
+      // Optional Clean-up: Wipe the query string clean from the browser address bar 
+      // so refreshing doesn't lock them to this screen forever
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  const [email, setEmail] = useState('');
+  const [feedback, setFeedback] = useState<{ status: 'success' | 'error'; text: string } | null>(null);
+
+  // const handleSubscribe = async (e: React.SyntheticEvent) => {
+  //   e.preventDefault();
+  //   setFeedback(null);
+  //   setLoading(true);
+
+  //   try {
+  //     const { error } = await supabase
+  //       .from('subscribers')
+  //       .insert({ email });
+
+  //     if (error) {
+  //       throw error; 
+  //     }
+      
+  //     setFeedback({ status: 'success', text: "Subscription successful! Check your email for confirmation." });
+  //     setEmail('');
+      
+  //   } catch (err: any) {
+  //     console.error("Database Write Error:", err);
+
+  //     // 🔍 THE TRICK: Catch the Postgres unique constraint error code
+  //     if (err.code === '23505') {
+  //       setFeedback({ 
+  //         status: 'success',
+  //         text: "You're already on the list! We've already got you covered." 
+  //       });
+  //     } else {
+  //       setFeedback({ 
+  //         status: 'error', 
+  //         text: `Subscription failed: ${err.message || 'Something went wrong.'}` 
+  //       });
+  //     }
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
+  const handleSubscribe = async (e: React.SyntheticEvent) => {
+  e.preventDefault();
+  setFeedback(null);
+  setLoading(true);
+
+  try {
+    // 🚀 Use the native SDK invoker. This completely bypasses raw fetch URL matching bugs.
+    const { data, error } = await supabase.functions.invoke('resend-subscribe', {
+      method: 'POST',
+      body: { email: email }
+    });
+
+    // Handle function execution errors
+    if (error) throw error;
+
+    // Handle custom business logic errors returned from Resend
+    if (data && !data.success) {
+      if (data.error && data.error.includes('already exists')) {
+        setFeedback({ status: 'success', text: "You're already on the list!" });
+      } else {
+        throw new Error(data.error || "Failed to subscribe.");
+      }
+      return;
+    }
+
+    setFeedback({ status: 'success', text: "Welcome to our newsletter list!" });
+    setEmail('');
+
+  } catch (err: any) {
+    console.error("Vite Client Function Error:", err);
+    setFeedback({ status: 'error', text: err.message || "Something went wrong." });
+  } finally {
+    setLoading(false);
+  }
+};
+
   return (
     <div className="min-h-screen flex flex-col bg-[#faf9f6] text-stone-900 antialiased selection:bg-stone-200">
       
       {/* 1. TOP MARQUEE ANNOUNCEMENT */}
-      <div className="bg-stone-950 text-[#f5f2eb] text-[10px] tracking-[0.25em] uppercase py-2.5 px-4 text-center font-sans font-light border-b border-stone-800">
-        🎉 Enjoy curated pricing revisions on select jewelry sets for a limited time 🎉
-      </div>
+      {currentPage!=='track-order' && (
+        <>
+        <div className="bg-stone-950 text-[#f5f2eb] text-[10px] tracking-[0.25em] uppercase py-2.5 px-4 text-center font-sans font-light border-b border-stone-800">
+          🎉 Enjoy curated pricing revisions on select jewelry sets for a limited time 🎉
+        </div>
 
       {/* 2. STICKY EDITORIAL NAVIGATION */}
       <nav className="sticky lg:relative top-0 z-50 backdrop-blur-md bg-[#faf9f6]/85 border-b border-stone-200/40 px-6 md:px-8 py-4 flex justify-between items-center select-none">
@@ -511,6 +605,8 @@ useEffect(() => {
           </div>
         </div>
       </nav>
+      </>
+      )}
       
       {/* DYNAMIC LAYOUT INTERFACE MATRIX ROUTER */}
       <main className="grow">
@@ -545,6 +641,11 @@ useEffect(() => {
           <UserProfilePage 
             user={user} 
             navigateToView={navigateToView}
+          />
+        ) : currentPage === 'track-order' ? (
+          <TrackOrder 
+            initialOrderId={urlParams.id}
+            initialToken={urlParams.token}
           />
         ) : currentPage === 'admin' ? (
           <AdminDashboard navigateToView={navigateToView} />
@@ -765,15 +866,25 @@ useEffect(() => {
                   Get immediate notifications on new releases, upcoming local gallery exhibitions, and secret markdown sales.
                 </p>
                 <div className="pt-4 max-w-md mx-auto">
-                  <div className="flex border-b border-stone-700 pb-2">
+                  <div className="border-b border-stone-700 pb-2">
+                    <form onSubmit={handleSubscribe} className="flex gap-2">
                     <input 
-                      type="email" 
+                      type="email"
                       placeholder="Enter your email address" 
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
                       className="bg-transparent border-none outline-none w-full text-xs tracking-wider placeholder-stone-600 focus:placeholder-stone-400 text-white font-sans font-light"
                     />
-                    <button className="text-[10px] tracking-[0.2em] uppercase text-[#c5a880] hover:text-[#f5f2eb] transition-colors font-sans pl-4">
-                      Request
+                    <button type="submit" disabled={loading} className="text-[10px] tracking-[0.2em] uppercase text-[#c5a880] hover:text-[#f5f2eb] transition-colors font-sans pl-4">
+                      {loading ? 'Joining...' : 'Subscribe'}
                     </button>
+                    </form>
+                    {feedback && (
+                      <p className={`text-xs mt-2 font-medium ${feedback.status === 'success' ? 'text-emerald-600' : 'text-red-500'}`}>
+                        {feedback.text}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -783,6 +894,7 @@ useEffect(() => {
       </main>
 
       {/* FOOTER BASE */}
+      {currentPage !== 'track-order' && (
       <footer className="bg-stone-950 text-stone-500 border-t border-stone-900 px-8 py-8">
         <div className="max-w-7xl w-full mx-auto flex flex-col-reverse lg:flex-row justify-between items-center gap-4 text-center lg:text-left">
           <p className="font-sans text-[9px] tracking-[0.25em] uppercase text-stone-500">
@@ -798,6 +910,7 @@ useEffect(() => {
           </div>
         </div>
       </footer>
+      )}
 
       <CartDrawer 
         isOpen={isCartOpen} 
