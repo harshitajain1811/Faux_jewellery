@@ -59,7 +59,8 @@ export default function Faq() {
                   </span>
                 </button>
                 
-                <div className={`grid transition-all duration-300 ease-in-out overflow-hidden ${isSelected ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0'}`}>
+                <div id={`faq-panel-${idx}`} role="tabpanel" aria-hidden={!isSelected}
+                  className={`grid transition-all duration-300 ease-in-out overflow-hidden ${isSelected ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0'}`}>
                   <div className="overflow-hidden">
                     <p className="font-sans text-xs md:text-sm leading-relaxed text-stone-500 tracking-wide pr-6">
                       {item.a}

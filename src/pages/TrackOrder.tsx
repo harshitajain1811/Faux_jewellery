@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabaseClient'; // Adjust path based on your codebase setup
+import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '../lib/supabaseClient';
 
 interface TrackOrderProps {
   initialOrderId: string;
@@ -10,6 +10,8 @@ export default function TrackOrder({ initialOrderId, initialToken }: TrackOrderP
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   const [confirmationModal, setConfirmationModal] = useState<{
@@ -56,35 +58,28 @@ export default function TrackOrder({ initialOrderId, initialToken }: TrackOrderP
   }, [initialOrderId, initialToken]);
 
   const isCurrentlyProcessing = actionLoadingId === initialOrderId;
-  // Format timestamp safely to match "1 July 2026"
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '';
-    return new Date(dateString).toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
+  const formatDate = useMemo(() => (dateString: string) => {
+      if (!dateString) return '';
+      return new Date(dateString).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
     });
-  };
+  }, []);
 
   const loadOrdersData = async() => {
-    try {
-  
-      // 2. LOAD ORDERS: Updated to include your new return lifecycle tracking states!
+    try {  
       const { data , error: orderError } = await supabase
         .from('orders')
         .select('id, created_at, items, total_paid, status')
-        .eq('id', initialOrderId)        // 👈 Explicitly pass the order ID!
-        .eq('guest_token', initialToken) // 👈 Authenticate the guest context
+        .eq('id', initialOrderId)        
+        .eq('guest_token', initialToken) 
         .single();
 
       if (orderError) throw orderError;
-
-      setOrder(data);
-  
+      setOrder(data);  
     } catch (err) {
-      console.error("Critical error mapping out profile workspace data:", err);
-    } finally {
-      setLoading(false);
+      console.error("Failed to refresh order data:", err);
     }
   };
 
@@ -144,72 +139,79 @@ export default function TrackOrder({ initialOrderId, initialToken }: TrackOrderP
               
               {/* Individual Price Calculation Display */}
               <span className="text-sm text-stone-500 font-normal">
-                ₹{((item.product?.price || 0) * item.quantity).toLocaleString('en-IN')}
+                ₹{((item.product?.price || 0) * (1 - ((item.product?.discount_rate || 0) / 100)) * item.quantity).toLocaleString('en-IN')}
               </span>
             </div>
           ))}
         </div>
 
         {/* Total Footer Segment + User Interactive Action Controllers */}
-                    <div className="border-t border-stone-100 pt-3 flex flex-col gap-3 mt-1">
-                      <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-sans uppercase tracking-wider text-stone-400">Total Charged</span>
-                        <span className="text-sm font-sans font-semibold text-stone-950">
-                          ₹{order.total_paid.toLocaleString('en-IN')}
-                        </span>
-                      </div>
+        <div className="border-t border-stone-100 pt-3 flex flex-col gap-3 mt-1">
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] font-sans uppercase tracking-wider text-stone-400">Total Charged</span>
+            <span className="text-sm font-sans font-semibold text-stone-950">
+              ₹{order.total_paid.toLocaleString('en-IN')}
+            </span>
+          </div>
 
-                      {/* Action Button Strip Node */}
-                      <div className="flex justify-end gap-2 pt-1 border-t border-stone-100/60">
-                        
-                        {/* A. CUSTOM CANCELLATION TRIGGER */}
-                        {order.status?.toLowerCase() === 'pending' && (
-                          <button
-                            type="button"
-                            disabled={isCurrentlyProcessing || actionLoadingId !== null}
-                            onClick={() => setConfirmationModal({
-                              isOpen: true,
-                              orderId: initialOrderId,
-                              type: 'cancel',
-                              title: 'Cancel Order Reservation',
-                              message: 'Are you absolutely sure you want to terminate this order? This operation cannot be undone.'
-                            })}
-                            className="w-full sm:w-auto text-[10px] uppercase font-sans font-medium tracking-wider px-3 py-1.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-2xs cursor-pointer transition-colors disabled:opacity-40 text-center"
-                          >
-                            {isCurrentlyProcessing ? 'Processing...' : 'Cancel Order'}
-                          </button>
-                        )}
+          {/* Action Button Strip Node */}
+          <div className="flex justify-end gap-2 pt-1 border-t border-stone-100/60">
+            
+            {/* A. CUSTOM CANCELLATION TRIGGER */}
+            {order.status?.toLowerCase() === 'pending' && (
+              <button
+                type="button"
+                disabled={isCurrentlyProcessing || actionLoadingId !== null}
+                onClick={() => setConfirmationModal({
+                  isOpen: true,
+                  orderId: initialOrderId,
+                  type: 'cancel',
+                  title: 'Cancel Order Reservation',
+                  message: 'Are you absolutely sure you want to terminate this order? This operation cannot be undone.'
+                })}
+                className="w-full sm:w-auto text-[10px] uppercase font-sans font-medium tracking-wider px-3 py-1.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-2xs cursor-pointer transition-colors disabled:opacity-40 text-center"
+              >
+                {isCurrentlyProcessing ? 'Processing...' : 'Cancel Order'}
+              </button>
+            )}
 
-                        {/* B. CUSTOM RETURN TRIGGER */}
-                        {order.status?.toLowerCase() === 'delivered' && (
-                          <button
-                            type="button"
-                            disabled={isCurrentlyProcessing || actionLoadingId !== null}
-                            onClick={() => setConfirmationModal({
-                              isOpen: true,
-                              orderId: initialOrderId,
-                              type: 'return',
-                              title: 'Request Return Authorization',
-                              message: 'Would you like to initiate a return request for this package window? A manager will audit the items for fulfillment verification.'
-                            })}
-                            className="w-full sm:w-auto text-[10px] uppercase font-sans font-medium tracking-wider px-3 py-1.5 bg-stone-950 text-white hover:bg-stone-800 rounded-2xs cursor-pointer transition-colors disabled:opacity-40 text-center"
-                          >
-                            {isCurrentlyProcessing ? 'Processing...' : 'Request Return'}
-                          </button>
-                        )}
+            {/* B. CUSTOM RETURN TRIGGER */}
+            {order.status?.toLowerCase() === 'delivered' && (
+              <button
+                type="button"
+                disabled={isCurrentlyProcessing || actionLoadingId !== null}
+                onClick={() => setConfirmationModal({
+                  isOpen: true,
+                  orderId: initialOrderId,
+                  type: 'return',
+                  title: 'Request Return Authorization',
+                  message: 'Would you like to initiate a return request for this package window? A manager will audit the items for fulfillment verification.'
+                })}
+                className="w-full sm:w-auto text-[10px] uppercase font-sans font-medium tracking-wider px-3 py-1.5 bg-stone-950 text-white hover:bg-stone-800 rounded-2xs cursor-pointer transition-colors disabled:opacity-40 text-center"
+              >
+                {isCurrentlyProcessing ? 'Processing...' : 'Request Return'}
+              </button>
+            )}
 
-                        {/* C. LOCKED STATUS CAPTION DISPLAY */}
-                        {['shipped', 'cancelled', 'return_requested', 'returned'].includes(order.status?.toLowerCase()) && (
-                          <p className="text-[10px] font-sans italic text-stone-400 select-none py-1">
-                            {order.status === 'shipped' && "Order is in transit with carrier. Options locked."}
-                            {order.status === 'cancelled' && "This transaction order has been cancelled."}
-                            {order.status === 'return_requested' && "Return processing request is pending managerial review."}
-                            {order.status === 'returned' && "Return lifecycle finalized. Restock complete."}
-                          </p>
-                        )}
+            {/* C. LOCKED STATUS CAPTION DISPLAY */}
+            {['shipped', 'cancelled', 'return_requested', 'returned'].includes(order.status?.toLowerCase()) && (
+              <p className="text-[10px] font-sans italic text-stone-400 select-none py-1">
+                {order.status === 'shipped' && "Order is in transit with carrier. Options locked."}
+                {order.status === 'cancelled' && "This transaction order has been cancelled."}
+                {order.status === 'return_requested' && "Return processing request is pending managerial review."}
+                {order.status === 'returned' && "Return lifecycle finalized. Restock complete."}
+              </p>
+            )}
 
-                      </div>
-                    </div>
+            {actionError && (
+              <div className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded-sm">{actionError}</div>
+            )}
+            {actionSuccess && (
+              <div className="text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded-sm">{actionSuccess}</div>
+            )}
+
+          </div>
+        </div>
       </div>
 
       {/* CUSTOM CONFIRMATION ACTION MODAL LAYER */}
@@ -237,7 +239,6 @@ export default function TrackOrder({ initialOrderId, initialToken }: TrackOrderP
                 type="button"
                 onClick={async () => {
                   const { orderId, type } = confirmationModal;
-                  // Close modal overlay window interface immediately
                   setConfirmationModal(prev => ({ ...prev, isOpen: false }));
                   
                   try {
@@ -251,9 +252,13 @@ export default function TrackOrder({ initialOrderId, initialToken }: TrackOrderP
 
                     if (error) throw error;
                     await loadOrdersData();
-                  } catch (err) {
-                    console.error(`Protocol failure modifying transaction rows to ${type}:`, err);
-                  } finally {
+                    setActionSuccess(type === 'cancel' ? 'Order cancelled successfully' : 'Return request submitted');
+                    setTimeout(() => setActionSuccess(null), 3000); // Auto-clear after 3 seconds
+
+                    } catch (err: any) {
+                      setActionError(err.message || 'Failed to process request');
+                      setTimeout(() => setActionError(null), 3000);
+                    } finally {
                     setActionLoadingId(null);
                   }
                 }}

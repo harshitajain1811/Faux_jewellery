@@ -1,6 +1,6 @@
 import { Trash2, ShoppingBag } from 'lucide-react';
+import { useEffect } from 'react';
 
-// Define the shape of your product based on your app's types
 interface Product {
   id: string;
   name: string;
@@ -21,10 +21,17 @@ interface WishlistPageProps {
   user: { id: string } | null;
   wishlistItems: Product[];
   onToggleWishlist: (product: Product) => void;
-  navigateToView: (targetPage: "collection" | "home" | "auth" | "profile" | "checkout" | "admin" | "product-details" | "wishlist", targetCategory?: string, targetProduct?: any) => void;
+  navigateToView: (targetPage: "collection" | "home" | "auth" | "profile" | "checkout" | "admin" | "product-details" | "wishlist", targetCategory?: string, targetProduct?: any, replace?: boolean) => void;
 }
 
-export default function WishlistPage({ wishlistItems, onToggleWishlist, navigateToView }: WishlistPageProps) {
+export default function WishlistPage({user, wishlistItems, onToggleWishlist, navigateToView }: WishlistPageProps) {
+
+   useEffect(() => {
+    if (!user) {
+      navigateToView('auth', 'All', null, true);
+    }
+  }, [user, navigateToView]);
+
   return (
     <div className="max-w-6xl w-full mx-auto px-4 sm:px-8 py-10 space-y-6 select-none">
       <div className="border-b border-stone-200 pb-4">
@@ -54,23 +61,24 @@ export default function WishlistPage({ wishlistItems, onToggleWishlist, navigate
           {wishlistItems.map((prod) => (
             <div key={prod.id} className="group border border-stone-100 rounded-xs overflow-hidden bg-white flex flex-col justify-between hover:shadow-sm transition-shadow">
               <div className="relative cursor-pointer" onClick={() => navigateToView('product-details', undefined, prod)}>
-                <img src={prod.main_image} alt={prod.name} className="w-full aspect-square object-cover transition-transform duration-500 group-hover:scale-102" />
+                <img src={prod.main_image} alt={prod.name} loading="lazy" onError={(e) => { e.currentTarget.src = '/placeholder.jpg'; }} className="w-full aspect-square object-cover transition-transform duration-500 group-hover:scale-102" />
                 <button 
                   type="button"
+                  aria-label={`Remove ${prod.name} from wishlist`}
                   onClick={(e) => {
-                    e.stopPropagation(); // Avoid navigating to product page
+                    e.stopPropagation();
                     onToggleWishlist(prod);
                   }}
                   className="absolute top-2 right-2 bg-white/90 backdrop-blur-xs text-stone-500 hover:text-red-500 p-2 rounded-full shadow-xs transition-colors cursor-pointer"
                 >
-                  <Trash2 size={14} strokeWidth={1.5} />
+                  <Trash2 size={14} strokeWidth={1.5} aria-hidden="true" />
                 </button>
               </div>
               
               <div className="p-3 bg-stone-50/40 border-t border-stone-50 space-y-1">
                 <h3 className="text-xs font-sans text-stone-800 font-normal truncate tracking-wide">{prod.name}</h3>
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-sans font-semibold text-stone-950">₹{prod.price?.toLocaleString('en-IN')}</span>
+                  <span className="text-xs font-sans font-semibold text-stone-950"> ₹{prod.price ? (prod.price * (1 - ((prod.discount_rate || 0) / 100))).toLocaleString('en-IN') : 0}</span>
                   <span onClick={() => navigateToView('product-details', undefined, prod)} className="text-[10px] font-sans uppercase tracking-widest text-stone-400 hover:text-stone-950 transition-colors cursor-pointer">
                     View Product
                   </span>

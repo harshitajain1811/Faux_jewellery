@@ -1,6 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Trash2, Edit3, Search, Star, Sparkles, CheckCircle2, Box, Upload, X } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
+import { useUserRole } from '../hooks/useUserRole';
+import { ADMIN_ROLES } from '../utils/adminRoles';
 
 interface Product {
   id: string;
@@ -19,12 +21,21 @@ interface Product {
 }
 
 interface AdminDashboardProps {
+  user: { id: string; email: string } | null;
   navigateToView: (
     targetPage: "collection" | "home" | "auth" | "profile" | "checkout" | "admin" | "product-details", 
     targetCategory?: string, targetProduct?: any, replace?: boolean) => void;
 }
 
-export default function AdminDashboard({ navigateToView }: AdminDashboardProps) {
+// Comprehensive Multi-Image Workspace state
+  // We combine existing URLs and newly chosen Files into a single uniform preview array
+  interface ImageItem {
+    id: string;
+    url: string;
+    file: File | null;
+  }
+
+export default function AdminDashboard({ user, navigateToView }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<'ledger' | 'atelier' | 'orders'>('orders');
   const [products, setProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,16 +49,57 @@ export default function AdminDashboard({ navigateToView }: AdminDashboardProps) 
   const [orderStatusFilter, setOrderStatusFilter] = useState('ALL');
   const [orderDaysFilter, setOrderDaysFilter] = useState('ALL');
   const [ordersCurrentPage, setOrdersCurrentPage] = useState(1);
+  
+  // Combined Form Memory Matrix
+  const [productForm, setProductForm] = useState({
+    name: '',
+    description: '',
+    price: '',
+    category: 'Necklaces',
+    newCategory: '',
+    polish: 'Gold',
+    newPolish: '',
+    is_featured: false,
+    is_most_selling: false,
+    is_new: false,
+    discount_rate: '0'
+  });
+
+  const [imageWorkspace, setImageWorkspace] = useState<ImageItem[]>([]);
+  const [primaryImageId, setPrimaryImageId] = useState<string | null>(null);
+
+  const [sizeVariants, setSizeVariants] = useState<{ size: string; quantity: number }[]>([]);
+  const [hasSizes, setHasSizes] = useState<boolean>(true);
+  const [noSizeQuantity, setNoSizeQuantity] = useState<number>(1);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('ALL');
+  const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
+
+  const {role, loading} = useUserRole(user?.id ?? null);
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isStaffButNotAllowed = !loading && role && !ADMIN_ROLES.includes(role as typeof ADMIN_ROLES[number]);
+  const itemsPerPage = 10;
   const ordersPerPage = 20;
 
-// Fetch function to load order logs directly from Supabase
-const fetchOrders = async () => {
+  // Fetch function to load order logs directly from Supabase
+const fetchOrders = async (status = 'ALL', days = 'ALL') => {
   setOrdersLoading(true);
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('orders') 
-      .select('*')
-      .order('created_at', { ascending: false });
+      .select('id, user_email, user_details, items, total_paid, status, created_at')
+      .order('created_at', { ascending: false })
+      .limit(500); // Limit to 500 recent orders for performance
+
+    if (status !== 'ALL') {
+      query = query.eq('status', status);
+    }
+    if (days !== 'ALL') {
+      const cutoff = new Date(Date.now() - parseInt(days) * 864e5).toISOString();
+      query = query.gte('created_at', cutoff);
+    }
+
+    const { data, error } = await query;
 
     if (!error && data) {
       setOrders(data);
@@ -61,13 +113,35 @@ const fetchOrders = async () => {
   }
 };
 
-// Synchronize database loads when shifting tabs
-useEffect(() => {
-  if (activeTab === 'orders') {
-    fetchOrders();
-    setOrdersCurrentPage(1);
-  }
-}, [activeTab]);
+  // Synchronize database loads when shifting tabs
+  useEffect(() => {
+    if (activeTab === 'orders') {
+      fetchOrders(orderStatusFilter, orderDaysFilter);
+      setOrdersCurrentPage(1);
+    }
+  }, [activeTab]);
+
+  const fetchProducts = async () => {
+    const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: false });
+    if (!error && data) setProducts(data);
+  };
+
+  useEffect(() => { fetchProducts(); }, []);
+
+  const revokeImageWorkspace = (items: ImageItem[] = imageWorkspace) => {
+    items.forEach(item => {
+      if (item.file && item.url.startsWith('blob:')) {
+        URL.revokeObjectURL(item.url);
+      }
+    });
+  };
+
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+      revokeImageWorkspace();
+    };
+  }, []);
 
   // Core Options Cache
   const dynamicCategories = useMemo(() => {
@@ -82,43 +156,46 @@ useEffect(() => {
     return Array.from(set);
   }, [products]);
 
-  // Combined Form Memory Matrix
-  const [productForm, setProductForm] = useState({
-    name: '',
-    description: '',
-    price: '',
-    category: 'Rings',
-    newCategory: '',
-    polish: 'Gold',
-    newPolish: '',
-    is_featured: false,
-    is_most_selling: false,
-    is_new: false,
-    discount_rate: '0'
+  const currentPrimaryPreviewUrl = useMemo(() => {
+    const found = imageWorkspace.find(i => i.id === primaryImageId);
+    return found ? found.url : imageWorkspace[0]?.url || '';
+  }, [imageWorkspace, primaryImageId]);
+
+  
+  const filteredProducts = products.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesType = selectedTypeFilter === 'ALL' || p.category === selectedTypeFilter;
+    return matchesSearch && matchesType;
   });
 
-  // Comprehensive Multi-Image Workspace state
-  // We combine existing URLs and newly chosen Files into a single uniform preview array
-  interface ImageItem {
-    id: string;
-    url: string;
-    file: File | null;
+  //Calculate matching subset parameters
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+
+  const paginatedProducts = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredProducts.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredProducts, currentPage]);
+
+  // Early return for loading and access control states
+  if (isStaffButNotAllowed) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-100 gap-4 text-sm text-stone-400 font-sans">
+        <div className="text-center max-w-md p-8 bg-stone-50 rounded-xs border border-stone-200">
+          <h3 className="text-lg font-semibold text-stone-900 mb-2">Access Denied</h3>
+          <p className="text-stone-600 mb-4">
+            Your account role is <span className="font-medium text-stone-900 capitalize">{role}</span>,
+            which does not have permission to view the Admin Dashboard.
+          </p>
+          <button
+            onClick={() => navigateToView('home', 'All', null)}
+            className="px-6 py-2 bg-stone-900 text-white rounded-xs hover:bg-stone-800 transition-colors cursor-pointer"
+          >
+            Return to Home
+          </button>
+        </div>
+      </div>
+    );
   }
-  const [imageWorkspace, setImageWorkspace] = useState<ImageItem[]>([]);
-  const [primaryImageId, setPrimaryImageId] = useState<string | null>(null);
-
-  const [sizeVariants, setSizeVariants] = useState<{ size: string; quantity: number }[]>([]);
-  const [hasSizes, setHasSizes] = useState<boolean>(true);
-  const [noSizeQuantity, setNoSizeQuantity] = useState<number>(1);
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const itemsPerPage = 10;
-
-  useEffect(() => { fetchProducts(); }, []);
-
-  const fetchProducts = async () => {
-    const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: false });
-    if (!error && data) setProducts(data);
-  };
 
   // Process incoming raw file listings
   const processIncomingFiles = (files: File[]) => {
@@ -132,11 +209,10 @@ useEffect(() => {
       file: file
     }));
 
-    setImageWorkspace(prev => {
-      const updated = [...prev, ...mapped];
-      if (!primaryImageId && updated.length > 0) setPrimaryImageId(updated[0].id);
-      return updated;
-    });
+    setImageWorkspace(prev => [...prev, ...mapped]);
+    if (!primaryImageId && mapped.length > 0) {
+      setPrimaryImageId(mapped[0].id);
+    }
   };
 
   // --- Drag and Drop Receivers ---
@@ -201,10 +277,10 @@ useEffect(() => {
     setActiveTab('atelier');
   };
 
-  const handleFormSubmit = async (e: React.SubmitEvent<HTMLFormElement>) => {
+  const handleFormSubmit = async (e: React.SyntheticEvent) => {
   e.preventDefault();
   
-  // 1. Core Validation: Ensure at least one image exists in the workspace layout
+  //Core Validation: Ensure at least one image exists in the workspace layout
   if (imageWorkspace.length === 0) {
     alert("Media Missing: Please drop or upload at least one image asset to serve as the product centerpiece.");
     return;
@@ -217,14 +293,14 @@ useEffect(() => {
     const absoluteCategory = productForm.category === 'ADD_NEW' ? productForm.newCategory : productForm.category;
     const absolutePolish = productForm.polish === 'ADD_NEW' ? productForm.newPolish : productForm.polish;
 
-    // 2. Identify the active primary image item, positioning it first in line
+    //Identify the active primary image item, positioning it first in line
     const sortedWorkspace = [...imageWorkspace].sort((a, b) => {
       if (a.id === primaryImageId) return -1;
       if (b.id === primaryImageId) return 1;
       return 0;
     });
 
-    // 3. Process image assets (Preserve URLs or upload fresh File payloads)
+    //Process image assets (Preserve URLs or upload fresh File payloads)
     const totalUploadedUrls: string[] = [];
     for (const item of sortedWorkspace) {
       if (item.file) {
@@ -262,7 +338,7 @@ useEffect(() => {
       finalStockMap['Universal Size'] = noSizeQuantity;
     }
 
-    // 5. Structure payload fields explicitly
+    //Structure payload fields explicitly
     const payload = {
       name: productForm.name,
       description: productForm.description,
@@ -284,15 +360,15 @@ useEffect(() => {
     if (editingProductId) {
       const { error } = await supabase.from('products').update(payload).eq('id', editingProductId);
       if (error) throw error;
-      setStatusMessage("Maison catalog modifications committed successfully!");
+      setStatusMessage("Product catalog modifications committed successfully!");
     } else {
       const { error } = await supabase.from('products').insert([payload]);
       if (error) throw error;
-      setStatusMessage("Masterpiece registered to live database registry!");
+      setStatusMessage("Product added to database!");
     }
 
     // Reset interface variables smoothly on completion
-    setTimeout(() => {
+    resetTimerRef.current = setTimeout(() => {
       resetDashboardWorkflow();
     }, 1500);
 
@@ -306,8 +382,9 @@ useEffect(() => {
 };
 
   const resetDashboardWorkflow = () => {
+    revokeImageWorkspace();
     setEditingProductId(null);
-    setProductForm({ name: '', description: '', price: '', category: 'Rings', newCategory: '', polish: 'Gold', newPolish: '', is_featured: false, is_most_selling: false, is_new: false, discount_rate: '0' });
+    setProductForm({ name: '', description: '', price: '', category: 'Necklaces', newCategory: '', polish: 'Gold', newPolish: '', is_featured: false, is_most_selling: false, is_new: false, discount_rate: '0' });
     setImageWorkspace([]);
     setPrimaryImageId(null);
     setSizeVariants([]);
@@ -316,39 +393,20 @@ useEffect(() => {
     setActiveTab('ledger');
   };
 
-  const currentPrimaryPreviewUrl = useMemo(() => {
-    const found = imageWorkspace.find(i => i.id === primaryImageId);
-    return found ? found.url : imageWorkspace[0]?.url || '';
-  }, [imageWorkspace, primaryImageId]);
-
-  const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('ALL');
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesType = selectedTypeFilter === 'ALL' || p.category === selectedTypeFilter;
-    return matchesSearch && matchesType;
-  });
-  // 1. Calculate matching subset parameters
-  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
-
-  const paginatedProducts = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredProducts.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredProducts, currentPage]);
-
   const handleLogout = async () => {
-  const confirmSignOut = confirm("Are you sure you want to log out of the Maison Management Portal?");
-  if (!confirmSignOut) return;
+    const confirmSignOut = confirm("Are you sure you want to log out of the Management Portal?");
+    if (!confirmSignOut) return;
 
-  try {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-    
-    // Clear operational local window parameters and escape back to login screen view
-    navigateToView('auth', 'All', null, true);
-  } catch (err: any) {
-    alert(`Logout Failed: ${err.message || err}`);
-  }
-};
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      
+      // Clear operational local window parameters and escape back to login screen view
+      navigateToView('auth', 'All', null, true);
+    } catch (err: any) {
+      alert(`Logout Failed: ${err.message || err}`);
+    }
+  };
 
   return (
     <div className="max-w-7xl w-full mx-auto px-8 py-12 font-sans selection:bg-stone-200">
@@ -554,7 +612,7 @@ useEffect(() => {
                               
                               {/* Customer Info */}
                               <td className="p-4 space-y-0.5">
-                                <div className="font-sans font-medium text-stone-900">{ord.user_details?.first_name} {ord.user_details?.last_name || 'Guest User'}</div>
+                                <div className="font-sans font-medium text-stone-900">{ord.user_details?.first_name || 'Guest'} {ord.user_details?.last_name || 'User'}</div>
                                 <div className="text-[10px] text-stone-400 font-sans">{ord.user_email || 'No email log'}</div>
                               </td>
                               
@@ -625,23 +683,60 @@ useEffect(() => {
                               {/* Status Mutation Ops Buttons triggers */}
                               <td className="p-4 text-right">
                                 <div className="flex gap-2 justify-end">
-                                  <select
-                                    value={ord.status}
-                                    onChange={async (e) => {
-                                      const nextStatus = e.target.value.toLocaleLowerCase();
-                                      if (confirm(`Transition status level profile configuration to ${nextStatus}?`)) {
-                                        await supabase.from('orders').update({ status: nextStatus }).eq('id', ord.id);
-                                        fetchOrders();
-                                      }
-                                    }}
-                                    className="text-[10px] bg-stone-50 border border-stone-200 rounded-2xs p-1 outline-none text-stone-700 cursor-pointer focus:border-stone-400"
-                                  >
-                                    <option value="Pending">Pending</option>
-                                    <option value="Shipped">Shipped</option>
-                                    <option value="Delivered">Delivered</option>
-                                    <option value="Returned">Returned</option>
-                                    <option value="Cancelled">Cancelled</option>
-                                  </select>
+                                  <div className="relative inline-block text-left">
+                                    
+                                    <button
+                                      type="button"
+                                      onClick={() => setActiveDropdownId(activeDropdownId === ord.id ? null : ord.id)}
+                                      className={`text-[10px] uppercase tracking-wider font-sans font-semibold rounded-full px-3 py-1.5 outline-none border transition-all duration-200 flex items-center gap-1.5 cursor-pointer shadow-xs 
+                                        bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100 `}
+                                    >
+                                      <span>{ord.status}</span>
+                                      <span className={`text-[7px] transition-transform duration-200 ${activeDropdownId === ord.id ? 'rotate-180' : ''}`}>
+                                        ▼
+                                      </span>
+                                    </button>
+
+                                    {activeDropdownId === ord.id && (
+                                      <>
+                                        <div className="fixed inset-0 z-30" onClick={() => setActiveDropdownId(null)} />
+                                        
+                                        <div 
+                                          className="absolute right-0 mt-1.5 w-32 bg-white border border-stone-200 rounded-sm shadow-xl z-40 py-1 origin-top-right animate-in fade-in zoom-in-95 duration-100 ease-out"
+                                        >
+                                          {[
+                                            { id: 'pending', label: 'Pending' },
+                                            { id: 'shipped', label: 'Shipped' },
+                                            { id: 'delivered', label: 'Delivered' },
+                                            { id: 'returned', label: 'Returned' },
+                                            { id: 'cancelled', label: 'Cancelled' }
+                                          ].map((statusOption) => (
+                                            <button
+                                              key={statusOption.id}
+                                              type="button"
+                                              onClick={async () => {
+                                                setActiveDropdownId(null);
+                                                const nextStatus = statusOption.id;
+                                                
+                                                if (confirm(`Transition status level profile configuration to ${nextStatus}?`)) {
+                                                  const updatePayload = {
+                                                    status: nextStatus,
+                                                    delivery_date: nextStatus === 'delivered' ? new Date().toISOString() : null
+                                                  };
+                                                  await supabase.from('orders').update(updatePayload).eq('id', ord.id);
+                                                  if (typeof fetchOrders === 'function') fetchOrders();
+                                                }
+                                              }}
+                                              className={`w-full text-left px-3 py-1.5 text-[11px] font-sans text-stone-600 transition-colors cursor-pointer block hover:bg-stone-50/80 hover:text-stone-900`}
+                                            >
+                                              {statusOption.label}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </>
+                                    )}
+
+                                  </div>
                                 </div>
                               </td>
                             </tr>
@@ -709,7 +804,10 @@ useEffect(() => {
                 type="text" 
                 placeholder="Search items by title context..." 
                 value={searchQuery} 
-                onChange={(e) => setSearchQuery(e.target.value)} 
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }} 
                 className="w-full bg-stone-50 border border-stone-200 pl-10 pr-4 py-2.5 text-xs rounded-xs outline-none focus:border-stone-950 focus:bg-white text-stone-900" 
               />
             </div>
@@ -717,7 +815,10 @@ useEffect(() => {
             <div className="relative w-full md:w-44 shrink-0">
               <select
                 value={selectedTypeFilter}
-                onChange={(e) => setSelectedTypeFilter(e.target.value)}
+                onChange={(e) => {
+                  setSelectedTypeFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
                 className="w-full bg-stone-50 border border-stone-200 pl-3 pr-8 py-2.5 text-xs rounded-xs outline-none focus:border-stone-950 focus:bg-white appearance-none cursor-pointer text-stone-800 font-medium tracking-wide"
               >
                 <option value="ALL">All Categories</option>
@@ -761,7 +862,7 @@ useEffect(() => {
                       <td className="p-4 font-sans font-light text-stone-500">{product.category}</td>
                       <td className="p-4 font-sans font-light text-stone-500">{product.polish || '—'}</td>
                       <td className="p-4 font-sans font-medium text-stone-900">
-                        {product.discount_rate > 0 ? (
+                        {product.discount_rate > 0 && product.discount_rate < 100 ? (
                           <div className="space-y-0.5">
                             <div className="text-stone-900 font-semibold">₹{(product.price * (1 - product.discount_rate / 100)).toLocaleString('en-IN')}</div>
                             <div className="text-[10px] text-red-600 line-through font-normal">₹{product.price.toLocaleString('en-IN')}</div>
@@ -847,11 +948,11 @@ useEffect(() => {
             <div className="space-y-4">
               <h3 className="text-xs font-semibold tracking-widest uppercase text-stone-400 border-b border-stone-100 pb-2">01. Blueprint Core Context</h3>
               <div className="space-y-1">
-                <label className="text-[10px] tracking-wider uppercase text-stone-500">Masterpiece Model Signature Title</label>
+                <label className="text-[10px] tracking-wider uppercase text-stone-500">Product Signature Title</label>
                 <input required type="text" name="name" value={productForm.name} onChange={(e) => setProductForm(p=>({...p, name: e.target.value}))} className="w-full bg-white border border-stone-200 p-2.5 text-xs text-stone-800 rounded-xs outline-none focus:border-stone-950" />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] tracking-wider uppercase text-stone-500">Extended Profile Description (8 Rows)</label>
+                <label className="text-[10px] tracking-wider uppercase text-stone-500">Product Description</label>
                 <textarea required rows={8} name="description" value={productForm.description} onChange={(e) => setProductForm(p=>({...p, description: e.target.value}))} className="w-full bg-white border border-stone-200 p-2.5 text-xs text-stone-800 rounded-xs outline-none resize-none leading-relaxed focus:border-stone-950" placeholder="Narrate the full architectural story..." />
               </div>
             </div>
@@ -930,6 +1031,7 @@ useEffect(() => {
                           type="button" 
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (item.file && item.url.startsWith('blob:')) URL.revokeObjectURL(item.url);
                             setImageWorkspace(prev => {
                               const filtered = prev.filter(i => i.id !== item.id);
                               if (item.id === primaryImageId && filtered.length > 0) setPrimaryImageId(filtered[0].id);

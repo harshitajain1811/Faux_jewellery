@@ -8,14 +8,16 @@ interface AuthPageProps {
   navigateToView: (
     targetPage: "collection" | "home" | "auth" | "profile" | "checkout" | "admin" | "product-details", 
     targetCategory?: string, targetProduct?: any, replace?: boolean) => void;
+    initialMode?: AuthMode;
 }
 
-type AuthMode = 'signin' | 'signup' | 'emailsent' | 'forgot' | 'resetpassword';
+export type AuthMode = 'signin' | 'signup' | 'emailsent' | 'forgot' | 'resetpassword';
 
-export default function AuthPage({ onAuthSuccess, navigateToView }: AuthPageProps) {
-  const [mode, setMode] = useState<AuthMode>('signin');
+export default function AuthPage({ onAuthSuccess, navigateToView, initialMode }: AuthPageProps) {
+  const [mode, setMode] = useState<AuthMode>(initialMode || 'signin');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+   const [isProcessing, setIsProcessing] = useState(false);
   
   // Form input trackers
   const [email, setEmail] = useState('');
@@ -24,18 +26,28 @@ export default function AuthPage({ onAuthSuccess, navigateToView }: AuthPageProp
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string|null>(null);
+  const clearFormState = () => {setFirstName(''); setLastName(''); setEmail(''); setPassword(''); setConfirmPassword(''); setErrorMessage(null);};
 
   // Catch inbound email recovery link clicks automatically
   useEffect(() => {
     const hasResetToken = 
       window.location.hash.includes('type=recovery') || 
       window.location.search.includes('type=recovery') ||
-      window.location.hash.includes('access_token');
+      window.location.hash.includes('access_token') ||
+      window.location.search.includes('access_token');
 
     if (hasResetToken) {
       setMode('resetpassword');
+      sessionStorage.removeItem('is_recovering_password');
     }
   }, []);
+
+  useEffect(() => {
+    if (initialMode) {
+      setMode(initialMode);
+    }
+  }, [initialMode]);
 
   // Validation Protocols
   const validateEmailFormat = (emailStr: string): boolean => {
@@ -54,6 +66,8 @@ export default function AuthPage({ onAuthSuccess, navigateToView }: AuthPageProp
 
   const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
+    if (isProcessing) return;
+    setSuccessMessage(null);
     setErrorMessage(null);
 
     // Common Email check for applicable fields
@@ -62,6 +76,7 @@ export default function AuthPage({ onAuthSuccess, navigateToView }: AuthPageProp
       return;
     }
 
+    setIsProcessing(true);
     try {
       setLoading(true);
 
@@ -76,6 +91,9 @@ export default function AuthPage({ onAuthSuccess, navigateToView }: AuthPageProp
 
         const passwordError = validatePasswordStrength(password);
         if (passwordError) throw new Error(passwordError);
+        if (password !== confirmPassword) {
+          throw new Error("Your password and confirmation password do not match.");
+        }
 
         const combinedName = `${firstName.trim()} ${lastName.trim()}`;
 
@@ -97,11 +115,12 @@ export default function AuthPage({ onAuthSuccess, navigateToView }: AuthPageProp
 
       else if (mode === 'signin') {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        setSuccessMessage(null);
         if (error) {
-          if (error.message === "Invalid login credentials") {
+          if (error) {
             throw new Error("The email or password you entered is incorrect.");
           }
-          throw error;
+          return;
         }
         if (data.user) {
           onAuthSuccess(data.user.user_metadata?.full_name || data.user.email || email);
@@ -114,7 +133,7 @@ export default function AuthPage({ onAuthSuccess, navigateToView }: AuthPageProp
           redirectTo: window.location.origin,
         });
         if (error) throw error;
-        setErrorMessage("If your email is registered, a password reset link has been sent to your inbox.");
+        setSuccessMessage("If your email is registered, a password reset link has been sent to your inbox.");
       }
 
       else if (mode === 'resetpassword') {
@@ -132,13 +151,14 @@ export default function AuthPage({ onAuthSuccess, navigateToView }: AuthPageProp
         setEmail('');
         setPassword('');
         setConfirmPassword('');
-        setErrorMessage("Password updated successfully. Please sign in with your new password.");
+        setSuccessMessage("Password updated successfully. Please sign in with your new password.");
       }
 
     } catch (err: any) {
       setErrorMessage(err.message || "An unexpected error occurred.");
     } finally {
       setLoading(false);
+      setIsProcessing(false);
     }
   };
 
@@ -179,7 +199,7 @@ export default function AuthPage({ onAuthSuccess, navigateToView }: AuthPageProp
                 <p className="font-sans text-xs text-stone-600 leading-relaxed">We sent a verification link to <strong className="text-stone-900 font-medium">{email}</strong>.</p>
                 <p className="font-sans text-xs text-stone-400 leading-relaxed">Please click the link inside that email to confirm your account, then return here to sign in.</p>
               </div>
-              <button onClick={() => { setMode('signin'); setErrorMessage(null); }} className="text-xs font-sans text-stone-950 font-medium tracking-widest uppercase underline hover:text-[#c5a880] pt-2 cursor-pointer block">Go back to Sign In</button>
+              <button onClick={() => { setMode('signin'); clearFormState(); }} className="text-xs font-sans text-stone-950 font-medium tracking-widest uppercase underline hover:text-[#c5a880] pt-2 cursor-pointer block">Go back to Sign In</button>
             </motion.div>
           ) : (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
@@ -199,9 +219,16 @@ export default function AuthPage({ onAuthSuccess, navigateToView }: AuthPageProp
               </div>
 
               {errorMessage && (
-                <div className={`p-4 text-xs font-sans font-light rounded-xs flex gap-3 leading-relaxed border ${errorMessage.includes("successfully") || errorMessage.includes("sent") ? "bg-stone-50 border-stone-200 text-stone-800" : "bg-amber-50 border-amber-200/60 text-stone-800"}`}>
+                <div className="p-4 text-xs font-sans font-light rounded-xs flex gap-3 leading-relaxed border bg-amber-50 border-amber-200/60 text-stone-800">
                   <AlertCircle size={15} className="shrink-0 mt-0.5 text-stone-700" />
                   <span>{errorMessage}</span>
+                </div>
+              )}
+
+              {successMessage && (
+                <div className="p-4 text-xs font-sans font-light rounded-xs flex gap-3 leading-relaxed border bg-green-50 border-green-200/60 text-green-800">
+                  <MailCheck size={15} className="shrink-0 mt-0.5 text-green-600" />
+                  <span>{successMessage}</span>
                 </div>
               )}
 
@@ -240,6 +267,13 @@ export default function AuthPage({ onAuthSuccess, navigateToView }: AuthPageProp
                   </div>
                 )}
 
+                {mode === 'signup' && (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-sans tracking-widest uppercase text-stone-400 block">Confirm Password</label>
+                    <input type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="••••••••" className="w-full bg-white border border-stone-200 focus:border-stone-950 outline-none px-4 py-3 text-xs tracking-wide font-sans font-light transition-colors rounded-xs" />
+                  </div>
+                )}
+
                 {mode === 'resetpassword' && (
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-sans tracking-widest uppercase text-stone-400 block">Confirm New Password</label>
@@ -249,13 +283,13 @@ export default function AuthPage({ onAuthSuccess, navigateToView }: AuthPageProp
 
                 {mode === 'signin' && (
                   <div className="text-right">
-                    <button type="button" onClick={() => { setMode('forgot'); setErrorMessage(null); }} className="text-[10px] font-sans tracking-widest uppercase text-stone-400 hover:text-stone-950 underline cursor-pointer transition-colors">
+                    <button type="button" onClick={() => { setMode('forgot'); clearFormState(); }} className="text-[10px] font-sans tracking-widest uppercase text-stone-400 hover:text-stone-950 underline cursor-pointer transition-colors">
                       Forgot Password?
                     </button>
                   </div>
                 )}
 
-                <button type="submit" disabled={loading} className="w-full group flex items-center justify-center gap-3 bg-stone-950 text-white py-4 text-[11px] tracking-[0.25em] uppercase hover:bg-[#c5a880] disabled:bg-stone-200 transition-colors duration-300 shadow-sm cursor-pointer mt-2">
+                <button type="submit" disabled={loading || isProcessing} className="w-full group flex items-center justify-center gap-3 bg-stone-950 text-white py-4 text-[11px] tracking-[0.25em] uppercase hover:bg-[#c5a880] disabled:bg-stone-200 transition-colors duration-300 shadow-sm cursor-pointer mt-2">
                   {loading ? 'Please wait...' : mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : mode === 'forgot' ? 'Send Reset Link' : 'Save New Password'}
                   {!loading && <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />}
                 </button>
@@ -263,19 +297,18 @@ export default function AuthPage({ onAuthSuccess, navigateToView }: AuthPageProp
 
               <div className="text-center pt-4 border-t border-stone-100 text-xs font-sans text-stone-500 font-light">
                 {mode === 'signin' && (
-                  <p>New to our seasonal portfolios? <button onClick={() => { setMode('signup'); setErrorMessage(null); }} className="text-stone-950 font-normal underline ml-1 tracking-wide hover:text-[#c5a880] cursor-pointer transition-colors">Create an Account</button></p>
+                  <p>New to our seasonal portfolios? <button onClick={() => { setMode('signup'); clearFormState(); }} className="text-stone-950 font-normal underline ml-1 tracking-wide hover:text-[#c5a880] cursor-pointer transition-colors">Create an Account</button></p>
                 )}
                 {mode === 'signup' && (
-                  <p>Already have an account? <button onClick={() => { setMode('signin'); setErrorMessage(null); }} className="text-stone-950 font-normal underline ml-1 tracking-wide hover:text-[#c5a880] cursor-pointer transition-colors">Sign In</button></p>
+                  <p>Already have an account? <button onClick={() => { setMode('signin'); clearFormState(); }} className="text-stone-950 font-normal underline ml-1 tracking-wide hover:text-[#c5a880] cursor-pointer transition-colors">Sign In</button></p>
                 )}
                 {(mode === 'forgot' || mode === 'resetpassword') && (
-                  <p>Remembered your password? <button onClick={() => { setMode('signin'); setErrorMessage(null); }} className="text-stone-950 font-normal underline ml-1 tracking-wide hover:text-[#c5a880] cursor-pointer transition-colors">Back to Sign In</button></p>
+                  <p>Remembered your password? <button onClick={() => { setMode('signin'); clearFormState(); }} className="text-stone-950 font-normal underline ml-1 tracking-wide hover:text-[#c5a880] cursor-pointer transition-colors">Back to Sign In</button></p>
                 )}
               </div>
             </motion.div>
           )}
         </AnimatePresence>
-
       </div>
     </div>
   );

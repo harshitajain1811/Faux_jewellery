@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { ShoppingBag, Loader2, Save } from 'lucide-react';
+import { ShoppingBag, Loader2, Save, Trash2, TriangleAlertIcon } from 'lucide-react';
 
 interface UserProfileProps {
   user: { id: string; email: string } | null;
@@ -8,13 +8,15 @@ interface UserProfileProps {
 }
 
 interface NestedProductData {
+  id: string;
   name: string;
   main_image: string;
   price: number;
+  discount_rate?: number;
+  category: string;
 }
 
 interface OrderItem {
-  product_id: string;
   size: string;
   quantity: number;
   product?: NestedProductData;
@@ -22,14 +24,14 @@ interface OrderItem {
 
 interface Order {
   id: string;
-  created_at: string;
+  created_at: Date;
   items: OrderItem[];
   total_paid: number;
+  delivery_date: Date;
   status: 'pending' | 'shipped' | 'delivered' | 'cancelled' | 'return_requested' | 'returned';
 }
 
 export default function UserProfilePage({ user, navigateToView }: UserProfileProps) {
-  // Profiles explicit state hooks
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
@@ -44,11 +46,12 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
   const [dbOrders, setDbOrders] = useState<Order[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [liveProductIds, setLiveProductIds] = useState<Set<string>>(new Set());
 
   const [confirmationModal, setConfirmationModal] = useState<{
       isOpen: boolean;
       orderId: string;
-      type: 'cancel' | 'return' | null;
+      type: 'cancel' | 'return' | 'delete' | null;
       title: string;
       message: string;
     }>({
@@ -61,34 +64,25 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
 
   // Initialize profile and orders together once user context is ready
   useEffect(() => {
-    if (user?.id) {
-      loadProfileAndOrdersData();
+     if (!user?.id) {
+      setLoadingData(false);
+      navigateToView('auth', 'All', null);
     }
+    loadProfileAndOrdersData();
   }, [user?.id]);
 
-  const loadProfileAndOrdersData = async (justRefreshOrders = false) => {
+  const loadProfileAndOrdersData = async () => {
+    if (!user?.id) return;
+    setLoadingData(true);
   try {
-    // Only turn on the full-screen loader if it's the initial page setup load
-    if (!justRefreshOrders) setLoadingData(true);
-
-    const { data: sessionData } = await supabase.auth.getSession();
-    const activeUserId = user?.id || sessionData?.session?.user?.id;
-
-    if (!activeUserId) {
-      if (!justRefreshOrders) setLoadingData(false);
-      return;
-    }
-
-    // 1. CONDITIONAL PROFILE FETCH: Skip if we are just refreshing the order status cards
-    if (!justRefreshOrders) {
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('first_name, last_name, phone_number, shipping_address, city, pincode')
-        .eq('id', activeUserId)
+        .eq('id', user.id)
         .single();
 
       if (profileError && profileError.code === 'PGRST116') {
-        await supabase.from('profiles').insert([{ id: activeUserId, first_name: '', last_name: '', phone_number: '', shipping_address: '', city: '', pincode: '' }]);
+        await supabase.from('profiles').insert([{ id: user.id, first_name: '', last_name: '', phone_number: '', shipping_address: '', city: '', pincode: '' }]);
       } else if (profileData) {
         setFirstName(profileData.first_name || '');
         setLastName(profileData.last_name || '');
@@ -96,28 +90,45 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
         setAddress(profileData.shipping_address || '');
         setCity(profileData.city || '');
         setPinCode(profileData.pincode || '');
-      }
+      
     }
 
-    // Compute dynamic time boundary for exactly 6 months ago
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-    // 2. LOAD ORDERS: Updated to include your new return lifecycle tracking states!
     const { data: orderData, error: orderError } = await supabase
       .from('orders')
-      .select('id, created_at, items, total_paid, status')
-      .eq('user_id', activeUserId) 
+      .select('id, created_at, items, total_paid, status, delivery_date')
+      .eq('user_id', user.id) 
       .gte('created_at', sixMonthsAgo.toISOString()) 
       .order('created_at', { ascending: false });
 
     if (orderError) throw orderError;
     if (orderData) setDbOrders(orderData as unknown as Order[]);
 
+    const historyProductIds = Array.from(
+      new Set(
+        orderData.flatMap(order => 
+          order.items?.map((item: any) => item.product?.id) || []
+        )
+      )
+    ).filter(Boolean);
+
+    if (historyProductIds.length > 0) {
+      const { data: liveProducts } = await supabase
+        .from('products')
+        .select('id')
+        .in('id', historyProductIds);
+
+      if (liveProducts) {
+        setLiveProductIds(new Set(liveProducts.map(p => p.id)));
+      }
+    }
+
   } catch (err) {
-    console.error("Critical error mapping out profile workspace data:", err);
+    console.error("Profile/orders loading error:", err);
   } finally {
-    if (!justRefreshOrders) setLoadingData(false);
+     setLoadingData(false);
   }
 };
 
@@ -128,8 +139,10 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
 
     const cleanFirstName = firstName.trim();
     const cleanLastName = lastName.trim();
+    const cleanPhone = phone.trim();
+    const cleanPincode = pincode.trim();
 
-    // Validations matching request guidelines
+    // Name validation
     if (cleanFirstName.length < 3 || cleanLastName.length < 3) {
       setValidationError("Your first and last names must contain at least 3 letters.");
       setIsSaving(false);
@@ -143,6 +156,22 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
       return;
     }
 
+     // Phone validation
+    const phoneRegex = /^[6-9]\d{9}$/;
+    if (cleanPhone && !phoneRegex.test(cleanPhone)) {
+      setValidationError("Please enter a valid 10-digit Indian mobile number starting with 6-9.");
+      setIsSaving(false);
+      return;
+    }
+
+    // Pincode validation
+    const pincodeRegex = /^[1-9]\d{5}$/;
+    if (cleanPincode && !pincodeRegex.test(cleanPincode)) {
+      setValidationError("Please enter a valid 6-digit Indian pincode (first digit must be 1-9).");
+      setIsSaving(false);
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('profiles')
@@ -152,7 +181,7 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
           phone_number: phone.trim(),
           shipping_address: address.trim(),
           city: city.trim(),
-          pincode: pincode.trim() ? null : Number(pincode),
+          pincode: pincode.trim(),
           updated_at: new Date().toISOString()
         })
         .eq('id', user?.id);
@@ -187,62 +216,79 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
         
-        {/* LEFT COLUMN: PROFILE FORM */}
-        <form onSubmit={handleSaveProfile} className="md:col-span-5 bg-white p-6 border border-stone-200 rounded-sm space-y-4">
-          <h3 className="text-sm font-sans font-medium uppercase tracking-wider text-stone-900 border-b border-stone-100 pb-2">Personal Details</h3>
-          
-          {saveSuccess && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 text-xs font-sans text-emerald-800 rounded-xs">
-              Profile modifications successfully committed to database!
-            </div>
-          )}
-
-          {validationError && (
-            <div className="p-3 bg-red-50 border border-red-200 text-xs font-sans text-red-800 rounded-xs">
-              {validationError}
-            </div>
-          )}
-
-          <div className="space-y-1">
-            <label className="text-[10px] font-sans uppercase text-stone-400 tracking-wider">Account Email</label>
-            <input type="text" disabled value={user?.email || 'No email associated'} className="w-full bg-stone-50 border border-stone-200 text-stone-400 px-3 py-2 text-xs font-sans rounded-xs cursor-not-allowed" />
+        {/* LEFT COLUMN: PROFILE FORM */}        
+      <form onSubmit={handleSaveProfile} className="md:col-span-5 bg-white p-6 border border-stone-200 rounded-sm space-y-4">
+        <h3 className="text-sm font-sans font-medium uppercase tracking-wider text-stone-900 border-b border-stone-100 pb-2">Personal Details</h3>
+        
+        {saveSuccess && (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 text-xs font-sans text-emerald-800 rounded-xs">
+            Profile modifications successfully committed to database!
           </div>
+        )}
 
-          <div className="space-y-1">
-            <label className="text-[10px] font-sans uppercase text-stone-400 tracking-wider">First Name</label>
-            <input type="text" value={firstName} onChange={(e) => { setValidationError(null); setFirstName(e.target.value); }} required placeholder="Enter first name" className="w-full bg-white border border-stone-200 focus:border-stone-950 outline-none px-3 py-2 text-xs font-sans text-stone-800 transition-colors rounded-xs" />
+        {validationError && (
+          <div className="p-3 bg-red-50 border border-red-200 text-xs font-sans text-red-800 rounded-xs">
+            {validationError}
           </div>
+        )}
 
-          <div className="space-y-1">
-            <label className="text-[10px] font-sans uppercase text-stone-400 tracking-wider">Last Name</label>
-            <input type="text" value={lastName} onChange={(e) => { setValidationError(null); setLastName(e.target.value); }} required placeholder="Enter last name" className="w-full bg-white border border-stone-200 focus:border-stone-950 outline-none px-3 py-2 text-xs font-sans text-stone-800 transition-colors rounded-xs" />
-          </div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-sans uppercase text-stone-400 tracking-wider">Account Email</label>
+          <input type="text" disabled value={user?.email || 'No email associated'} className="w-full bg-stone-50 border border-stone-200 text-stone-400 px-3 py-2 text-xs font-sans rounded-xs cursor-not-allowed" />
+        </div>
 
-          <div className="space-y-1">
-            <label className="text-[10px] font-sans uppercase text-stone-400 tracking-wider">Phone Number</label>
-            <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="98765 43210" className="w-full bg-white border border-stone-200 focus:border-stone-950 outline-none px-3 py-2 text-xs font-sans text-stone-800 transition-colors rounded-xs" />
-          </div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-sans uppercase text-stone-400 tracking-wider">First Name</label>
+          <input type="text" value={firstName} onChange={(e) => { setValidationError(null); setFirstName(e.target.value); }} required placeholder="Enter first name" className="w-full bg-white border border-stone-200 focus:border-stone-950 outline-none px-3 py-2 text-xs font-sans text-stone-800 transition-colors rounded-xs" />
+        </div>
 
-          <div className="space-y-1">
-            <label className="text-[10px] font-sans uppercase text-stone-400 tracking-wider">Default Shipping Address</label>
-            <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={3} placeholder="Apartment, Street Name, City, State, Pincode" className="w-full bg-white border border-stone-200 focus:border-stone-950 outline-none px-3 py-2 text-xs font-sans text-stone-800 transition-colors rounded-xs resize-none" />
-          </div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-sans uppercase text-stone-400 tracking-wider">Last Name</label>
+          <input type="text" value={lastName} onChange={(e) => { setValidationError(null); setLastName(e.target.value); }} required placeholder="Enter last name" className="w-full bg-white border border-stone-200 focus:border-stone-950 outline-none px-3 py-2 text-xs font-sans text-stone-800 transition-colors rounded-xs" />
+        </div>
 
-          <div className="space-y-1">
-            <label className="text-[10px] font-sans uppercase text-stone-400 tracking-wider">City</label>
-            <input type="text" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Enter city" className="w-full bg-white border border-stone-200 focus:border-stone-950 outline-none px-3 py-2 text-xs font-sans text-stone-800 transition-colors rounded-xs" />
-          </div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-sans uppercase text-stone-400 tracking-wider">Phone Number</label>
+          <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="98765 43210" className="w-full bg-white border border-stone-200 focus:border-stone-950 outline-none px-3 py-2 text-xs font-sans text-stone-800 transition-colors rounded-xs" />
+        </div>
 
-          <div className="space-y-1">
-            <label className="text-[10px] font-sans uppercase text-stone-400 tracking-wider">Pincode</label>
-            <input type="text" value={pincode} onChange={(e) => setPinCode(e.target.value)} placeholder="Enter pincode" className="w-full bg-white border border-stone-200 focus:border-stone-950 outline-none px-3 py-2 text-xs font-sans text-stone-800 transition-colors rounded-xs" />
-          </div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-sans uppercase text-stone-400 tracking-wider">Default Shipping Address</label>
+          <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={3} placeholder="Apartment, Street Name, City, State, Pincode" className="w-full bg-white border border-stone-200 focus:border-stone-950 outline-none px-3 py-2 text-xs font-sans text-stone-800 transition-colors rounded-xs resize-none" />
+        </div>
 
-          <button type="submit" disabled={isSaving} className="w-full bg-stone-950 text-white py-2.5 text-xs font-sans uppercase tracking-widest hover:bg-stone-800 transition-colors rounded-xs mt-2 cursor-pointer flex items-center justify-center gap-2">
-            {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-            {isSaving ? "Saving Profiles..." : "Save Details"}
+        <div className="space-y-1">
+          <label className="text-[10px] font-sans uppercase text-stone-400 tracking-wider">City</label>
+          <input type="text" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Enter city" className="w-full bg-white border border-stone-200 focus:border-stone-950 outline-none px-3 py-2 text-xs font-sans text-stone-800 transition-colors rounded-xs" />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-sans uppercase text-stone-400 tracking-wider">Pincode</label>
+          <input type="text" value={pincode} onChange={(e) => setPinCode(e.target.value)} placeholder="Enter pincode" className="w-full bg-white border border-stone-200 focus:border-stone-950 outline-none px-3 py-2 text-xs font-sans text-stone-800 transition-colors rounded-xs" />
+        </div>
+
+        <button type="submit" disabled={isSaving} className="w-full bg-stone-950 text-white py-2.5 text-xs font-sans uppercase tracking-widest hover:bg-stone-800 transition-colors rounded-xs mt-2 cursor-pointer flex items-center justify-center gap-2">
+          {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+          {isSaving ? "Saving Profiles..." : "Save Details"}
+        </button>
+
+        <div className="pt-4 border-t border-stone-100 flex flex-col items-start gap-2">
+          <span className="text-[9px] font-sans uppercase text-stone-400 tracking-wider">Danger Zone</span>
+          <button 
+            type="button" 
+            onClick={() => setConfirmationModal({
+              isOpen: true,
+              orderId: '',
+              type: 'delete',
+              title: 'Are you sure you want to delete this account?',
+              message: 'This action is permanent and cannot be undone. All your data, profile settings, and history will be permanently erased.'
+            })}
+            className="text-[10px] font-sans uppercase tracking-wider text-red-600 hover:text-red-800 transition-colors cursor-pointer font-medium flex items-center gap-1.5"
+          >
+            <Trash2 size={11} /> Delete Account
           </button>
-        </form>
+        </div>
+      </form>
 
         {/* RIGHT COLUMN: ORDERS HISTORY */}
         <div className="md:col-span-7 bg-white p-6 border border-stone-200 rounded-sm space-y-4">
@@ -265,6 +311,16 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
             ) : (
               dbOrders.map((ord) => {
                 const isCurrentlyProcessing = actionLoadingId === ord.id;
+                // Helper to check return eligibility
+                const isWithinReturnWindow = () => {
+                  if (ord.status !== 'delivered') return false;
+
+                  const deliveryDate = new Date(ord.delivery_date || ord.created_at);
+                  const today = new Date();
+                  const daysSinceDelivery = Math.floor((today.getTime() - deliveryDate.getTime()) / (1000 * 60 * 60 * 24));
+
+                  return daysSinceDelivery <= 7;
+                };
 
                 return (
                   <div key={ord.id} className="p-4 border border-stone-200 rounded-xs flex flex-col gap-4 bg-stone-50/30 relative">
@@ -293,31 +349,54 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
                     
                     {/* Product Rows Mapping */}
                     <div className="space-y-3">
-                      {ord.items?.map((item, index) => (
-                        <div key={index} className="flex items-center gap-4">
-                          <img 
-                            src={item.product?.main_image} 
-                            alt={item.product?.name} 
-                            className="w-12 h-12 object-cover bg-stone-100 rounded-xs border border-stone-200/40 shrink-0" 
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-sans font-normal text-stone-900 truncate">
-                              {item.product?.name}
-                            </p>
-                            <p className="text-[10px] font-sans text-stone-400 mt-0.5">
-                              Quantity: {item.quantity} • Size: {item.size || 'One Size'}
-                            </p>
+                      {ord.items?.map((item, index) => {
+                        const targetId = item.product?.id || '';
+                        const productExists = liveProductIds.has(targetId);
+
+                        return (
+                          <div key={index} className="flex items-center gap-4">
+                            <img 
+                              src={productExists ? item.product?.main_image : "/placeholder-precious.jpg"} 
+                              alt={productExists ? item.product?.name : ""} 
+                              className={`w-12 h-12 object-cover bg-stone-100 rounded-xs border border-stone-200/40 shrink-0 ${
+                                productExists ? 'cursor-pointer hover:opacity-90 transition-opacity' : 'opacity-60'
+                              }`}
+                              onClick={() => productExists && navigateToView('product-details', 'All', item.product)}
+                            />
+                            
+                            <div className="flex-1 min-w-0">
+                              {productExists ? (
+                                <p 
+                                  onClick={() => navigateToView('product-details', 'All', item.product)}
+                                  className="text-xs font-sans font-normal text-stone-900 truncate cursor-pointer hover:text-[#c5a880] hover:underline transition-colors"
+                                >
+                                  {item.product?.name}
+                                </p>
+                              ) : (
+                                <p className="text-xs font-sans font-light text-stone-400 italic truncate">
+                                  Archived Design (Unavailable)
+                                </p>
+                              )}
+                              
+                              <p className="text-[10px] font-sans text-stone-400 mt-0.5">
+                                Quantity: {item.quantity} • Size: {item.size || 'One Size'}
+                              </p>
+                            </div>
+
+                            {productExists && item.product?.price ? (
+                              <span className="text-xs font-sans text-stone-500 shrink-0">
+                                ₹{(item.product.price * (1 - (item.product.discount_rate || 0)/100)).toLocaleString('en-IN')}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-sans text-stone-400 italic shrink-0">
+                                Historical Record
+                              </span>
+                            )}
                           </div>
-                          {item.product?.price && (
-                            <span className="text-xs font-sans text-stone-500 shrink-0">
-                              ₹{item.product.price.toLocaleString('en-IN')}
-                            </span>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                     
-                    {/* Total Footer Segment + User Interactive Action Controllers */}
                     <div className="border-t border-stone-100 pt-3 flex flex-col gap-3 mt-1">
                       <div className="flex justify-between items-center">
                         <span className="text-[10px] font-sans uppercase tracking-wider text-stone-400">Total Charged</span>
@@ -326,7 +405,6 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
                         </span>
                       </div>
 
-                      {/* Action Button Strip Node */}
                       <div className="flex justify-end gap-2 pt-1 border-t border-stone-100/60">
                         
                         {/* A. CUSTOM CANCELLATION TRIGGER */}
@@ -348,7 +426,7 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
                         )}
 
                         {/* B. CUSTOM RETURN TRIGGER */}
-                        {ord.status?.toLowerCase() === 'delivered' && (
+                        {ord.status?.toLowerCase() === 'delivered' && isWithinReturnWindow() && (
                           <button
                             type="button"
                             disabled={isCurrentlyProcessing || actionLoadingId !== null}
@@ -366,12 +444,13 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
                         )}
 
                         {/* C. LOCKED STATUS CAPTION DISPLAY */}
-                        {['shipped', 'cancelled', 'return_requested', 'returned'].includes(ord.status?.toLowerCase()) && (
+                        {['shipped', 'cancelled', 'return_requested', 'returned', 'delivered'].includes(ord.status?.toLowerCase()) && (
                           <p className="text-[10px] font-sans italic text-stone-400 select-none py-1">
                             {ord.status === 'shipped' && "Order is in transit with carrier. Options locked."}
                             {ord.status === 'cancelled' && "This transaction order has been cancelled."}
                             {ord.status === 'return_requested' && "Return processing request is pending managerial review."}
                             {ord.status === 'returned' && "Return lifecycle finalized. Restock complete."}
+                            {ord.status === 'delivered' && !isWithinReturnWindow() && " Return period has expired."}
                           </p>
                         )}
 
@@ -391,8 +470,11 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/40 backdrop-blur-xs p-4 animate-fade-in">
           <div className="bg-white border border-stone-200 p-6 rounded-sm max-w-sm w-full space-y-4 shadow-xl">
             <div className="space-y-1.5">
-              <h3 className="font-serif text-base text-stone-900 font-medium tracking-wide">
-                {confirmationModal.title}
+              <h3 className="font-serif text-base text-stone-900 font-medium tracking-wide flex items-center gap-2">
+                {(confirmationModal.type === 'delete') && (
+                  <TriangleAlertIcon size={16} className="text-red-600 shrink-0" strokeWidth={2} />
+                )}
+                <span>{confirmationModal.title}</span>
               </h3>
               <p className="font-sans text-xs text-stone-500 font-light leading-relaxed">
                 {confirmationModal.message}
@@ -411,9 +493,27 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
                 type="button"
                 onClick={async () => {
                   const { orderId, type } = confirmationModal;
-                  // Close modal overlay window interface immediately
                   setConfirmationModal(prev => ({ ...prev, isOpen: false }));
                   
+                  // Delete Account
+                  if (type === 'delete') {
+                    try {
+                      
+                      const { error } = await supabase.rpc('delete_user_account');
+                      if (error) throw error;
+
+                      await supabase.auth.signOut();
+                      navigateToView('home'); 
+                      
+                      alert("Your account and data have been deleted successfully.");
+                    } catch (err) {
+                      console.error("Account erasure sequence interrupted:", err);
+                      alert("Failed to delete account. Please try again or contact support.");
+                    }
+                    return;
+                  }
+
+                  // Order Actions (Cancel / Return)
                   try {
                     setActionLoadingId(orderId);
                     const targetStatus = type === 'cancel' ? 'cancelled' : 'return_requested';
@@ -424,7 +524,7 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
                       .eq('id', orderId);
 
                     if (error) throw error;
-                    await loadProfileAndOrdersData(true); // Fire our optimized order card state refetch
+                    await loadProfileAndOrdersData();
                   } catch (err) {
                     console.error(`Protocol failure modifying transaction rows to ${type}:`, err);
                   } finally {
@@ -432,7 +532,9 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
                   }
                 }}
                 className={`text-[10px] uppercase font-sans font-medium tracking-wider px-3 py-1.5 text-white rounded-2xs cursor-pointer transition-colors ${
-                  confirmationModal.type === 'cancel' ? 'bg-red-600 hover:bg-red-700' : 'bg-stone-950 hover:bg-stone-800'
+                  confirmationModal.type === 'cancel' || 'delete' 
+                    ? 'bg-red-600 hover:bg-red-700' 
+                    : 'bg-stone-950 hover:bg-stone-800'
                 }`}
               >
                 Confirm

@@ -11,6 +11,7 @@ interface CartItem {
     id: string;
     name: string;
     price: number;
+    discount_rate?: number;
     main_image: string;
     category: string;
   };
@@ -23,14 +24,33 @@ interface CheckoutProps {
   user: { id?: string; email: string } | null;
   onOrderPlacedSuccess: () => void;
   navigateToView: (
-    targetPage: "collection" | "home" | "auth" | "profile" | "checkout" | "admin" | "product-details", 
+    targetPage: "collection" | "home" | "auth" | "profile" | "checkout" | "admin" | "product-details" | "wishlist" | "about" | "contact" | "faq" | "privacy-policy" | "terms-of-service" | "return-and-refund" | "shipping-delivery" | "cancellation-refund", 
     targetCategory?: string, 
     targetProduct?: any, 
     replace?: boolean
   ) => void;
 }
 
-// 1. OUTER COMPONENT: Safely fetches profile data before mounting Stripe Canvas
+async function supabaseRetry<T>(
+  fn: () => Promise<T>,
+  maxAttempts = 3,
+  baseDelayMs = 200
+): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await fn();
+    } catch (err) {
+      attempt++;
+      if (attempt >= maxAttempts) throw err;               
+      const delay = baseDelayMs * 2 ** (attempt - 1);       
+      console.warn(`Supabase call failed (attempt ${attempt}), retrying…`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+}
+
+// OUTER COMPONENT: Safely fetches profile data
 export default function Checkout(props: CheckoutProps) {
   const [initialFormData, setInitialFormData] = useState({
     email: props.user?.email || '',
@@ -42,10 +62,9 @@ export default function Checkout(props: CheckoutProps) {
     phone: ''
   });
   const [isProfileLoaded, setIsProfileLoaded] = useState(false);
-
+  
   useEffect(() => {
     async function prefillUserProfile() {
-      // Check for user id instead of email since that is your relational primary key
       if (!props.user?.id) {
         setIsProfileLoaded(true);
         return;
@@ -55,7 +74,7 @@ export default function Checkout(props: CheckoutProps) {
         const { data: profile, error } = await supabase
           .from('profiles')
           .select('first_name, last_name, phone_number, shipping_address, city, pincode')
-          .eq('id', props.user.id) // Querying using id instead of email
+          .eq('id', props.user.id)
           .single();
 
         if (error) throw error;
@@ -81,7 +100,6 @@ export default function Checkout(props: CheckoutProps) {
     prefillUserProfile();
   }, [props.user]);
 
-  // Keep the UI empty for just a split second while compiling DB rows
   if (!isProfileLoaded) {
     return <div className="max-w-7xl mx-auto px-8 py-32 text-center text-xs font-sans tracking-widest uppercase text-stone-400">Syncing Secure Environment...</div>;
   }
@@ -93,7 +111,7 @@ export default function Checkout(props: CheckoutProps) {
   );
 }
 
-// 2. INTERIOR COMPONENT: Handles the view presentation and interactive inputs
+// INTERIOR COMPONENT: Handles the view presentation and interactive inputs
 interface InteriorProps extends CheckoutProps {
   structuralPreFill: any;
 }
@@ -105,16 +123,29 @@ function CheckoutFormInterior({ cartItems, user, onOrderPlacedSuccess, navigateT
   const [checkoutStep, setCheckoutStep] = useState<'shipping' | 'payment'>('shipping');
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
   const [isCardComplete, setIsCardComplete] = useState(false);
+  const [isVerifyingEmail, setIsVerifyingEmail] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [guestSuccessMessage, setGuestSuccessMessage] = useState<string | null>(null);
-
   const [formData, setFormData] = useState(structuralPreFill);
 
-  const subtotal = cartItems.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+  const getFinalPrice = (product: CartItem['product']) => {
+    if (product.discount_rate && product.discount_rate > 0) {
+      return product.price * (1 - product.discount_rate / 100);
+    }
+    return product.price;
+  };
+  const subtotal = cartItems.reduce((sum, item) => sum + (getFinalPrice(item.product) * item.quantity), 0);
   const insuranceAndShipping = subtotal > 5000 ? 0 : 50;
   const estimatedTax = Math.round(subtotal * 0.05);
   const totalAmount = subtotal + insuranceAndShipping + estimatedTax;
+  const totalSavings = cartItems.reduce((acc, item) => {
+    const basePrice = item.product.price;
+    const finalPrice = getFinalPrice(item.product);
+    const savingsPerItem = basePrice - finalPrice;
+    return acc + (savingsPerItem * item.quantity);
+  }, 0);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -126,7 +157,7 @@ function CheckoutFormInterior({ cartItems, user, onOrderPlacedSuccess, navigateT
 
   const validateShippingForm = (): boolean => {
     const errors: Record<string, string> = {};
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
     if (!formData.email.trim() || !emailRegex.test(formData.email)) {
       errors.email = "Provide a valid active email address.";
     }
@@ -140,20 +171,48 @@ function CheckoutFormInterior({ cartItems, user, onOrderPlacedSuccess, navigateT
     const pinRegex = /^\d{6}$/;
     if (!pinRegex.test(formData.postalCode.trim())) errors.postalCode = "Postal code must be 6 digits.";
     
-    const phoneDigits = formData.phone.replace(/\D/g, ''); 
-    if (phoneDigits.length !== 10) errors.phone = "Provide exactly 10 numerical digits.";
-
+    const mobileRegex = /^[6-9]\d{9}$/;
+    if (!mobileRegex.test(formData.phone.replace(/\D/g, ''))) {
+      errors.phone = "Provide a valid 10-digit mobile number starting with 6, 7, 8, or 9.";
+    }
+    
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const handleProceedToPayment = (e: React.SyntheticEvent) => {
-    e.preventDefault();
-    if (validateShippingForm()) {
-      setPaymentError(null);
-      setCheckoutStep('payment');
+  const handleProceedToPayment = async (e: React.SyntheticEvent) => {
+  e.preventDefault();
+  
+  if (!validateShippingForm()) return;
+
+  setIsVerifyingEmail(true);
+  setPaymentError(null);
+
+  try {
+    const { data, error } = await supabase.functions.invoke('validate-email', {
+      body: { email: formData.email.trim() },
+    });
+
+    if (error || !data?.valid) {
+      setValidationErrors((prev) => ({
+        ...prev,
+        email: data?.error || "This email host cannot receive messages. Please verify for typos.",
+      }));
+      return;
     }
-  };
+
+    setValidationErrors((prev) => ({ ...prev, email: '' }));
+    setCheckoutStep('payment');
+
+  } catch (err) {
+    setValidationErrors((prev) => ({
+      ...prev,
+      email: "Validation services are temporarily busy. Please double check your entry and try again.",
+    }));
+  } finally {
+    setIsVerifyingEmail(false);
+  }
+};
 
   const handleFinalPaymentSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
@@ -225,7 +284,6 @@ function CheckoutFormInterior({ cartItems, user, onOrderPlacedSuccess, navigateT
 
         try {
         for (const item of cartItems) {          
-          // 1. Fetch current product sizes JSON configuration
           const { data: product } = await supabase
             .from('products')
             .select('size_stock')
@@ -236,18 +294,19 @@ function CheckoutFormInterior({ cartItems, user, onOrderPlacedSuccess, navigateT
             const updatedSizes = { ...product.size_stock };
             const currentQty = updatedSizes[item.size] || 0;
             
-            // Subtract purchased quantity, making sure it doesn't drop below 0
             updatedSizes[item.size] = Math.max(0, currentQty - item.quantity);
 
-            // 2. Push updated JSON back to database
-            await supabase
-              .from('products')
-              .update({ size_stock: updatedSizes })
-              .eq('id', item.product.id);
+            await supabaseRetry(() =>
+              supabase
+                .from('products')
+                .update({ size_stock: updatedSizes })
+                .eq('id', item.product.id) as unknown as Promise<any>
+            );
           }
           }
         } catch (stockError) {
           console.error("Non-blocking error syncing inventory metrics:", stockError);
+          setInventoryError("We couldn't update the inventory for some items. They will remain in your cart, but quantities may be off.");
         }
 
         if (user) {
@@ -350,13 +409,19 @@ function CheckoutFormInterior({ cartItems, user, onOrderPlacedSuccess, navigateT
                 <label className="text-[9px] font-sans tracking-wider uppercase text-stone-400">Secure Contact Number</label>
                 <div className="flex rounded-xs border overflow-hidden bg-white border-stone-200 focus-within:border-stone-950">
                   <span className="bg-stone-50 border-r border-stone-200 px-3 py-2.5 text-xs font-sans text-stone-500 flex items-center">+91</span>
-                  <input type="tel" maxLength={10} name="phone" value={formData.phone} onChange={handleInputChange} className="w-full p-2.5 text-xs font-sans text-stone-800 outline-none border-none bg-transparent" placeholder="00000 00000" />
+                  <input type="tel" maxLength={10} name="phone" value={formData.phone} onChange={handleInputChange} pattern="\d{10}" className="w-full p-2.5 text-xs font-sans text-stone-800 outline-none border-none bg-transparent" placeholder="00000 00000" />
                 </div>
                 {validationErrors.phone && <p className="text-[10px] text-red-600 font-sans pt-1">{validationErrors.phone}</p>}
               </div>
 
-              <button type="submit" className="w-full mt-4 bg-stone-950 text-white font-sans text-[11px] tracking-widest uppercase py-4 border border-stone-950 hover:bg-transparent hover:text-stone-950 transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer">
-                Continue to Payment Methods <ArrowRight size={14} />
+              <button type="submit" disabled={isVerifyingEmail} className="w-full mt-4 bg-stone-950 text-white font-sans text-[11px] tracking-widest uppercase py-4 border border-stone-950 hover:bg-transparent hover:text-stone-950 transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer">
+                {isVerifyingEmail ? (
+                  "Verifying Network Address..."
+                ) : (
+                  <>
+                    Continue to Payment Methods <ArrowRight size={14} />
+                  </>
+                )}
               </button>
             </form>
           )}
@@ -386,7 +451,16 @@ function CheckoutFormInterior({ cartItems, user, onOrderPlacedSuccess, navigateT
                   />
                 </div>
               </div>
-              {paymentError && <p className="text-xs text-red-700 bg-red-50 p-3 rounded-xs font-sans tracking-wide">{paymentError}</p>}
+              {paymentError && 
+                <p className="text-xs text-red-700 bg-red-50 p-3 rounded-xs font-sans tracking-wide">
+                  {paymentError}
+                </p>
+              }
+              {inventoryError && 
+                <p className="text-xs text-yellow-700 bg-yellow-50 p-2 rounded-xs font-sans tracking-wide">
+                  {inventoryError}
+                </p>
+              }
               <div className="flex gap-2.5 bg-stone-50 border border-stone-200/50 p-4 rounded-xs text-stone-500">
                 <ShieldCheck size={16} className="text-stone-800 shrink-0 mt-0.5" />
                 <p className="text-[10px] font-sans leading-relaxed tracking-wide">Stripe handles card data directly. Your financial details never touch our local servers.</p>
@@ -404,25 +478,52 @@ function CheckoutFormInterior({ cartItems, user, onOrderPlacedSuccess, navigateT
         </div>
 
         <aside className="lg:order-2 lg:col-span-5 bg-stone-50/60 border border-stone-200/60 p-6 lg:sticky lg:top-32 rounded-xs space-y-6 order-1">
-          <h3 className="text-[10px] font-sans tracking-[0.2em] uppercase font-medium text-stone-900 border-b border-stone-200 pb-3">Acquisition Allocation</h3>
+          <h3 className="text-[10px] font-sans tracking-[0.2em] uppercase font-medium text-stone-900 border-b border-stone-200 pb-3">Final Allocation</h3>
           <div className="space-y-4 max-h-80 overflow-y-auto pr-1">
-            {cartItems.map((item, index) => (
-              <div key={`${item.product.id}-${index}`} className="flex gap-4 items-center justify-between font-sans text-xs pb-4 border-b border-stone-200/40 last:border-none last:pb-0">
-                <div className="flex gap-3 items-center truncate">
-                  <img src={item.product.main_image} alt={item.product.name} className="w-12 h-12 object-cover bg-white border border-stone-200/60 rounded-xs" />
-                  <div className="truncate space-y-0.5">
-                    <h4 className="text-stone-900 font-light truncate">{item.product.name}</h4>
-                    <p className="text-[10px] text-stone-400">Size: {item.size} • Qty: {item.quantity}</p>
+            {cartItems.map((item, index) => {
+              const originalPrice = item.product.price * item.quantity;
+              const currentFinalPrice = getFinalPrice(item.product) * item.quantity;
+              const hasDiscount = originalPrice > currentFinalPrice;
+
+              return (
+                <div key={`${item.product.id}-${index}`} className="flex gap-4 items-center justify-between font-sans text-xs pb-4 border-b border-stone-200/40 last:border-none last:pb-0">
+                  <div className="flex gap-3 items-center truncate">
+                    <img src={item.product.main_image} alt={item.product.name} className="w-12 h-12 object-cover bg-white border border-stone-200/60 rounded-xs" />
+                    <div className="truncate space-y-0.5">
+                      <h4 className="text-stone-900 font-light truncate">{item.product.name}</h4>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-stone-400 font-sans tracking-wide">
+                        <span>• Size: <span className="text-stone-700 font-medium">{item.size}</span></span>
+                        <span>• Qty: <span className="text-stone-700 font-medium">{item.quantity}</span></span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-end gap-0.5 text-right shrink-0">
+                    <span className="text-stone-950 font-medium">
+                      ₹{currentFinalPrice.toLocaleString()}
+                    </span>
+                    {hasDiscount && (
+                      <span className="text-stone-400 line-through text-[10px]">
+                        ₹{originalPrice.toLocaleString()}
+                      </span>
+                    )}
                   </div>
                 </div>
-                <span className="text-stone-950 font-medium">₹{(item.product.price * item.quantity).toLocaleString()}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
+          
           <div className="space-y-2 border-t border-stone-200 pt-4 font-sans text-xs text-stone-600">
-            <div className="flex justify-between"><span>Subtotal Curation</span><span className="text-stone-950">₹{subtotal.toLocaleString()}</span></div>
-            <div className="flex justify-between"><span>Insured Global Dispatch</span><span className="text-stone-950">{insuranceAndShipping === 0 ? "Complimentary" : `₹${insuranceAndShipping}`}</span></div>
+            {totalSavings > 0 && (
+              <div className="flex justify-between text-emerald-700 bg-emerald-50/50 px-2 py-1.5 rounded-xs font-medium text-[11px] mt-1 border border-emerald-100/40">
+                <span>Total Saved</span>
+                <span>₹{totalSavings.toLocaleString()}</span>
+              </div>
+            )}
+            <div className="flex justify-between"><span>Subtotal</span><span className="text-stone-950">₹{subtotal.toLocaleString()}</span></div>
+            <div className="flex justify-between"><span>Insurance & Shipping</span><span className="text-stone-950">{insuranceAndShipping === 0 ? "Complimentary" : `₹${insuranceAndShipping}`}</span></div>
             <div className="flex justify-between"><span>Estimated Registry Surcharge (Tax)</span><span className="text-stone-950">₹{estimatedTax}</span></div>
+            
             <div className="flex justify-between items-baseline text-stone-950 font-medium pt-3 border-t border-stone-200 text-sm">
               <span className="font-serif text-xs text-stone-500">Total Amount</span>
               <span className="text-sm font-semibold font-sans">₹{totalAmount.toLocaleString()}</span>

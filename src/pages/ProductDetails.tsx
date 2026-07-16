@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ArrowRight, Heart, AlertCircle } from 'lucide-react';
+import { ArrowRight, Heart, AlertCircle, ZoomIn, ZoomOut } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabaseClient';
 
@@ -10,7 +10,7 @@ interface Product {
   price: number;
   discount_rate?: number;
   main_image: string;
-  sub_images?: string[]; // Array field for sub images if available in your db schema
+  sub_images?: string[];
   category: string;
   polish?: string;
   is_new?: boolean;
@@ -37,7 +37,7 @@ interface ProductDetailsProps {
   cartItems: CartItem[];
   onToggleWishlist: (product: Product) => void;
   onAddToBag: (product: Product, quantity: number, size: string) => void;
-  navigateToView: (targetPage: "collection" | "home" | "auth" | "profile" | "checkout" | "admin" | "product-details" | "wishlist", targetCategory?: string, targetProduct?: any) => void; 
+  navigateToView: (targetPage: "collection" | "home" | "auth" | "profile" | "checkout" | "admin" | "product-details" | "wishlist" | "about" | "contact" | "faq" | "privacy-policy" | "terms-of-service" | "return-and-refund" | "shipping-delivery" | "cancellation-refund", targetCategory?: string, targetProduct?: any) => void; 
 }
 
 export default function ProductDetails({ product, wishlist, user, cartItems, onToggleWishlist, onAddToBag, navigateToView }: ProductDetailsProps) {
@@ -46,8 +46,10 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
   const [similarProducts, setSimilarProducts] = useState<Product[]>([]);
   const [selectedQuantity, setSelectedQuantity] = useState<number>(1);
   const [showAuthMessage, setShowAuthMessage] = useState(false);
+  const [isZoomed, setIsZoomed] = useState(false);
+  const [coords, setCoords] = useState({ x: 50, y: 50 });
 
-  // 1. DYNAMIC CATEGORY SIZE STANDARD MATCHING
+  // DYNAMIC CATEGORY SIZE STANDARD MATCHING
   const definedSizesMatrix = useMemo(() => {
     const categoryLower = (product.category || '').toLowerCase();
     if (categoryLower === 'ring') {
@@ -56,25 +58,20 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
     if (categoryLower.includes('bangle')) {
       return ['2.2', '2.4', '2.6', '2.8'];
     }
-    // Fallback directly to whatever keys are defined in DB if category standard doesn't match
     return product.size_stock ? Object.keys(product.size_stock) : [];
   }, [product.category, product.size_stock]);
 
-  // Determine standard lowest available size default setting
   const initialSelectedSize = useMemo(() => {
     if (!product.size_stock) return '';
     
-    // Find all sizes within standard matrix that are in stock (> 0)
     const availableInStock = definedSizesMatrix.filter(
       (size) => product.size_stock?.[size] && product.size_stock[size] > 0
     );
 
     if (availableInStock.length > 0) {
-      // Sort ascending to grab lowest numerical or alphanumeric size entry
       return [...availableInStock].sort((a, b) => parseFloat(a) - parseFloat(b))[0];
     }
 
-    // Secondary fallback to standard keys if defined standard matrix returned no matches
     const allDbKeys = Object.keys(product.size_stock);
     const dbKeysInStock = allDbKeys.filter((k) => (product.size_stock?.[k] ?? 0) > 0);
     if (dbKeysInStock.length > 0) {
@@ -86,30 +83,12 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
 
   const [selectedSize, setSelectedSize] = useState<string>('');
 
-  // Synchronize dynamic default size updates upon loading an alternate product blueprint
   useEffect(() => {
     setSelectedSize(initialSelectedSize);
     setSelectedQuantity(1);
   }, [initialSelectedSize, product.id]);
 
-  // // 2. STOCK LIMIT CALCULATION FOR SELECTED VARIANT
-  // const maxAvailableStock = useMemo(() => {
-  //   if (!product.size_stock || !selectedSize) return 0;
-  //   // Safely return the numerical value from DB map record
-  //   return product.size_stock[selectedSize] ?? 0;
-  // }, [product.size_stock, selectedSize]);
-
-  // // Enforce safety limits if user changes sizes and previous quantity exceeds new max stock limits
-  // useEffect(() => {
-  //   if (selectedQuantity > maxAvailableStock && maxAvailableStock > 0) {
-  //     setSelectedQuantity(maxAvailableStock);
-  //   }
-  // }, [selectedSize, maxAvailableStock]);
-
-  // const isOutOfStock = maxAvailableStock <= 0;
-  // const isAtQuantityLimit = selectedQuantity >= maxAvailableStock;
-
-  // 3. DYNAMIC SUB IMAGES RESOLUTION EVALUATION
+  // DYNAMIC SUB IMAGES RESOLUTION EVALUATION
   const productSubImages = useMemo(() => {
     if (product.sub_images && Array.isArray(product.sub_images) && product.sub_images.length > 0) {
       return product.sub_images;
@@ -123,32 +102,12 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
     setActiveViewerImage(product.main_image);
   }, [product.main_image, product.id]);
 
-  // 3. PRICING SYSTEM CALCULATIONS
+  // PRICING SYSTEM CALCULATIONS
   const hasDiscount = product.discount_rate !== undefined && product.discount_rate > 0;
   const calculatedDiscountedPrice = hasDiscount 
     ? product.price * (1 - (product.discount_rate || 0) / 100) 
     : product.price;
 
-  useEffect(() => {
-    async function fetchSimilar() {
-      try {
-        const { data, error } = await supabase
-          .from('products')
-          .select('*')
-          .not('id', 'eq', product.id)
-          .limit(4);
-
-        if (!error && data) {
-          setSimilarProducts(data as Product[]);
-        }
-      } catch (err) {
-        console.error("Error fetching recommendations:", err);
-      }
-    }
-    fetchSimilar();
-  }, [product.id]);
-
-  // Determine if the product is fully out of stock across all sizes
   const isNetOutOfStock = useMemo(() => {
     if (!product.size_stock) return true;
     const totalStock = Object.values(product.size_stock).reduce((sum, val) => sum + val, 0);
@@ -167,7 +126,6 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
 
       if (error) throw error;
 
-      // 2. Fallback Attempt: If category matching yielded fewer than 4 items, backfill using polish
       if (!matches || matches.length < 4) {        
         let fallbackQuery = supabase
           .from('products')
@@ -181,7 +139,6 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
         const { data: fallbackMatches } = await fallbackQuery.limit(4);
 
         if (fallbackMatches) {
-          // Combine unique products avoiding duplicates
           const combined = [...(matches || [])];
           fallbackMatches.forEach(item => {
             if (!combined.some(c => c.id === item.id) && combined.length < 4) {
@@ -192,7 +149,6 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
         }
       }
 
-      //If still empty, fetch any 4 alternative products
       if (!matches || matches.length === 0) {
         const { data: randomFallback } = await supabase
           .from('products')
@@ -213,7 +169,6 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
   }
 }, [product.id, product.category, product.polish]);
   
-  // Find the exact matching snapshot for THIS specific product variant inside the global cart
   const matchingCartItem = useMemo(() => {
     return cartItems?.find(
       (item) => item.product.id === product.id && item.size === selectedSize
@@ -224,7 +179,7 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
     if (matchingCartItem) {
       setSelectedQuantity(matchingCartItem.quantity);
     } else {
-      setSelectedQuantity(1); // Default to 1 if this product is not in the cart yet
+      setSelectedQuantity(1);
     }
   }, [matchingCartItem, selectedSize]); 
 
@@ -274,6 +229,9 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
                   >
                     <img 
                       src={imgUrl} 
+                      loading="lazy"
+                      decoding="async"
+                      onError={(e) => { e.currentTarget.src = '/placeholder.jpg'; }}
                       alt={`Angle view ${index + 1}`} 
                       className="w-full h-full object-cover brightness-[0.98] contrast-[1.02]" 
                     />
@@ -284,15 +242,58 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
 
             {/* Main Featured Image Display */}
             <div className={productSubImages.length > 0 ? "sm:w-[85%]" : "w-full"}>
-              <div className="aspect-square w-full overflow-hidden bg-white border border-stone-200/40 rounded-sm relative group">
+              <div 
+                className="aspect-square w-full overflow-hidden bg-white border border-stone-200/40 rounded-sm relative group"
+                onMouseMove={(e) => {
+                  if (!isZoomed) return;
+                  const { left, top, width, height } = e.currentTarget.getBoundingClientRect();
+                  const x = ((e.clientX - left) / width) * 100;
+                  const y = ((e.clientY - top) / height) * 100;
+                  setCoords({ x, y });
+                }}
+                onTouchMove={(e) => {
+                  if (!isZoomed || e.touches.length === 0) return;
+                  const touch = e.touches[0];
+                  const { left, top, width, height } = e.currentTarget.getBoundingClientRect();
+                  const x = ((touch.clientX - left) / width) * 100;
+                  const y = ((touch.clientY - top) / height) * 100;
+                  
+                  setCoords({ 
+                    x: Math.max(0, Math.min(100, x)), 
+                    y: Math.max(0, Math.min(100, y)) 
+                  });
+                }}
+              >
                 <img 
                   src={activeViewerImage} 
+                  loading="lazy"
+                  decoding="async"
+                  onError={(e) => { e.currentTarget.src = '/placeholder.jpg'; }}
                   alt={product.name} 
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-101"
+                  style={{
+                    transformOrigin: isZoomed ? `${coords.x}% ${coords.y}%` : 'center center'
+                  }}
+                  className={`w-full h-full object-cover transition-transform duration-200 ease-out ${
+                    isZoomed ? "scale-225" : "scale-100 group-hover:scale-101"
+                  }`}
+                  onClick={() => setIsZoomed(!isZoomed)}
                 />
-                <span className="absolute top-4 left-4 bg-stone-950 text-[#f5f2eb] text-[9px] uppercase tracking-[0.2em] px-3 py-1 font-sans rounded-xs">
+                
+                <span className="absolute top-4 left-4 bg-stone-950 text-[#f5f2eb] text-[9px] uppercase tracking-[0.2em] px-3 py-1 font-sans rounded-xs pointer-events-none select-none">
                   {product.category}
                 </span>
+
+                {/* MINIMAL ATELIER ZOOM OVERLAY ACTION BUTTON */}
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsZoomed(!isZoomed);
+                  }}
+                  aria-label={isZoomed ? "Zoom out product image" : "Zoom in product image"}
+                  className="absolute bottom-4 right-4 bg-white/90 backdrop-blur-xs hover:bg-stone-950 text-stone-600 hover:text-[#f5f2eb] p-2 border border-stone-200/60 rounded-sm shadow-3xs transition-all duration-300 z-10 cursor-pointer"
+                >
+                  {isZoomed ? <ZoomOut size={14} strokeWidth={1.5} /> : <ZoomIn size={14} strokeWidth={1.5} />}
+                </button>
               </div>
             </div>
           </div>
@@ -353,6 +354,7 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
                           setSelectedSize(size);
                           setSelectedQuantity(1);
                         }}
+                        aria-label={`Select ${size} (${stockVolume} ${stockVolume >1 ? 'in stock' : 'left'})`}
                         className={`px-4 py-2.5 text-xs font-sans border tracking-wider transition-all duration-200 minimum-w-[44px] ${
                           isSelected
                             ? "border-stone-950 bg-stone-950 text-white font-medium"
@@ -378,6 +380,7 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
                     <span className="px-4 text-sm font-sans font-light w-12 text-center">{selectedQuantity}</span>
                     <div className="flex flex-col border-l border-stone-200">
                       <button 
+                        aria-label={`${selectedQuantity} items in bag`}
                         disabled={selectedQuantity >= maxAvailableStock || maxAvailableStock <= 0}
                         onClick={() => setSelectedQuantity(prev => prev + 1)} 
                         className={`px-2 py-1 text-[10px] select-none transition-colors ${
@@ -389,6 +392,7 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
                         ▲
                       </button>
                       <button 
+                        aria-label="Decrease quantity"
                         disabled = {selectedQuantity <= 1 || maxAvailableStock <= 0}
                         onClick={() => setSelectedQuantity(prev => Math.max(1, prev - 1))}
                         className="px-2 py-1 text-[10px] text-stone-500 hover:text-stone-950 cursor-pointer border-t border-stone-100"
@@ -428,6 +432,7 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
                   <button 
                     onClick={() => setIsDescExpanded(!isDescExpanded)}
                     className="text-[11px] uppercase tracking-wider text-[#c5a880] hover:text-stone-950 font-sans block pt-1 cursor-pointer"
+                    aria-label={isDescExpanded ? "See Less" : "See More"}
                   >
                     {isDescExpanded ? 'See Less —' : 'See More +'}
                   </button>
@@ -466,6 +471,7 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
               <div className="flex gap-4">
                 <button 
                   type="button"
+                  aria-label={`Add ${product.name} to bag`}
                   disabled={isNetOutOfStock} 
                   onClick={() => onAddToBag(product, selectedQuantity, selectedSize)}
                   className={`grow group flex items-center justify-center gap-3 border px-8 py-4 text-xs tracking-widest uppercase transition-all duration-300 shadow-sm ${
@@ -479,6 +485,8 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
                 
                 <button 
                   type="button"
+                  aria-pressed={isWishlisted}
+                  aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
                   onClick={handleWishlistToggleSync}
                   className={`p-4 border rounded-xs transition-colors duration-300 cursor-pointer ${
                     isWishlisted ? 'border-red-200 bg-red-50/40 text-red-500' : 'border-stone-200 text-stone-600 hover:text-stone-950 hover:border-stone-400'
@@ -512,13 +520,13 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
               <div key={item.id} onClick={() => navigateToView('product-details', item.category, item)}
               className="group cursor-pointer bg-white p-3 border border-stone-200/20 hover:border-stone-200 transition-all duration-300">
                 <div className="aspect-square w-full overflow-hidden bg-stone-50 mb-4 relative">
-                  <img src={item.main_image} alt={item.name} className="w-full h-full object-cover" />
+                  <img src={item.main_image} alt={item.name} loading="lazy" decoding='async' onError={(e) => { e.currentTarget.src = '/placeholder.jpg'; }} className="w-full h-full object-cover" />
                 </div>
                 <div className="space-y-1 px-1">
                   <div className="text-[9px] tracking-[0.2em] font-sans uppercase text-stone-400">{item.category}</div>
                   <h4 className="font-serif text-sm text-stone-900 truncate font-light tracking-wide">{item.name}</h4>
                   <div className="pt-2 flex justify-between items-center text-xs font-sans mt-2 border-t border-stone-100/60">
-                    <span className="text-stone-950 font-medium">${item.price.toLocaleString()}</span>
+                    <span className="text-stone-950 font-medium">₹{item.price.toLocaleString()}</span>
                     <span className="text-[9px] tracking-[0.15em] uppercase text-[#c5a880]">Explore</span>
                   </div>
                 </div>

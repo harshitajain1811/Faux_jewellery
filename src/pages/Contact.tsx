@@ -62,8 +62,25 @@ export default function Contact({ user }: ContactProps) {
   // Handle form submission
   const handleMessageDispatch = async (e: React.SyntheticEvent) => {
   e.preventDefault();
-  setLoading(true);
   setFeedback(null);
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email.trim())) {
+      setFeedback({ status: 'error', text: 'Provide a valid email address.' });
+      return;
+    }
+
+    if (formData.subject.length > 50) {
+      setFeedback({ status: 'error', text: `Subject cannot contain more than 50 chars. (Current: ${formData.subject.length})` });
+      return;
+    }
+
+    if (formData.message.length > 200) {
+      setFeedback({ status: 'error', text: `Message cannot contain more than 200 chars. (Current: ${formData.message.length})` });
+      return;
+    }
+
+  setLoading(true);
 
   try {
     const insertPayload = {
@@ -154,7 +171,7 @@ export default function Contact({ user }: ContactProps) {
             )}
 
               <form onSubmit={handleMessageDispatch} className="space-y-8">
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-1">
                     <label className="text-[9px] font-sans tracking-[0.2em] uppercase text-stone-400 font-semibold">Your Identity Name</label>
                     <input 
@@ -164,6 +181,7 @@ export default function Contact({ user }: ContactProps) {
                       value={formData.name}
                       onChange={handleInputChange}
                       className= "w-full bg-transparent border-b border-stone-200 focus:border-[#c5a880] py-2 text-xs font-sans text-stone-900 outline-none transition-colors"
+                      placeholder='Your Full Name'
                     />
                   </div>
                   <div className="space-y-1">
@@ -188,7 +206,7 @@ export default function Contact({ user }: ContactProps) {
                     value={formData.subject}
                     onChange={handleInputChange}
                     className="w-full bg-transparent border-b border-stone-200 focus:border-[#c5a880] py-2 text-xs font-sans text-stone-900 outline-none transition-colors placeholder-stone-300" 
-                    placeholder="Custom sizing adjustments, order modifications" 
+                    placeholder="Your Inquiry..." 
                   />
                 </div>
 

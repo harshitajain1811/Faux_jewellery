@@ -37,28 +37,32 @@ interface CartDrawerProps {
 }
 
 export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, setCartItems, onNavigateToCollection, onCheckoutTrigger, user }: CartDrawerProps) {
-  const totalPrice = cartItems.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
+  const getFinalPrice = (product: Product) => {
+    if (product.discount_rate && product.discount_rate > 0) {
+      return product.price * (1 - product.discount_rate / 100);
+    }
+    return product.price;
+  };
+  const totalPrice = cartItems.reduce((acc, item) => acc + (getFinalPrice(item.product) * item.quantity), 0);
+  const getMaxStock = (item: CartItem) => item.product.size_stock?.[item.size] ?? 99;
   const [deletingIndex, setDeletingIndex] = useState<number | null>(null);
 
-  // This modifies the global array decoupled from the product page layout variables
   const handleDrawerQtyAdjust = (index: number, shift: number) => {
     setCartItems(prev => prev.map((item, idx) => {
       if (idx !== index) return item;
       
       const nextQty = item.quantity + shift;
-      const maxAvailableStock = item.product.size_stock?.[item.size] ?? 99;
+      const maxAvailableStock = getMaxStock(item);
       
       if (nextQty < 1 || nextQty > maxAvailableStock) return item;
       return { ...item, quantity: nextQty };
     }));
   };
 
-  // --- NEW INTERCEPTOR DELETION ROUTINE ---
   const handleItemRemovalSync = async (index: number, item: CartItem) => {
     setDeletingIndex(index);
     try {
       if (user?.id) {
-        // If a registered session context exists, clear row matching identity constraints
         const { error } = await supabase
           .from('user_carts')
           .delete()
@@ -73,7 +77,6 @@ export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, s
     } catch (err) {
       console.error("Non-blocking failure syncing local cart removal matrix:", err);
     } finally {
-      // Fire local structural state layout update segment last
       onRemoveItem(index);
       setDeletingIndex(null);
     }
@@ -83,7 +86,6 @@ export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, s
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Dark luxury overlay backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 0.4 }}
@@ -105,7 +107,7 @@ export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, s
               <div className="space-y-0.5">
                 <h3 className="font-serif text-lg uppercase tracking-wider text-stone-900 font-light">Your Allocation</h3>
                 <p className="text-[10px] font-sans tracking-widest uppercase text-stone-400">
-                  {cartItems.length} {cartItems.length === 1 ? 'Artifact' : 'Artifacts'} Selected
+                  {cartItems.length} {cartItems.length === 1 ? 'Product' : 'Products'} Selected
                 </p>
               </div>
               <button onClick={onClose} className="p-2 text-stone-500 hover:text-stone-950 transition-colors">
@@ -116,59 +118,61 @@ export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, s
             {/* Scrollable Item Stack Container */}
             <div className="grow overflow-y-auto py-4 space-y-4 pr-1">
               {cartItems.length > 0 ? (
-                cartItems.map((item, idx) => {
-                  // 1. Calculate dynamic max stock boundary values for this specific row item
-                  const maxAvailableStock = item.product.size_stock?.[item.size] ?? 99;
+                <ul className="space-y-4 pr-1" role="list" aria-label="Cart items">
+                  {cartItems.map((item, idx) => {
+                    const maxAvailableStock = getMaxStock(item);
 
                   return (
-                    <div key={idx} className="flex gap-4 p-3 bg-white border border-stone-200/40 rounded-sm group relative">
+                    <li key={ `${item.product.id}-${item.size}` } tabIndex={0} className="flex gap-4 p-3 bg-white border border-stone-200/40 rounded-sm group relative min-h-20"
+                        role="listitem" aria-label={`${item.product.name}, Size: ${item.size}, Quantity: ${item.quantity}`}>
                       <div className="w-20 h-20 bg-stone-50 overflow-hidden shrink-0 border border-stone-100">
-                        <img src={item.product.main_image} alt={item.product.name} className="w-full h-full object-cover" />
+                        <img loading="lazy" onError={(e) => { e.currentTarget.src = '/placeholder.jpg'; }} src={item.product.main_image} alt={item.product.name} className="w-full h-full object-cover" />
                       </div>
                       
-                      <div className="grow space-y-1 min-w-0 pr-6">
-                        <div className="text-[9px] tracking-[0.15em] font-sans uppercase text-stone-400">{item.product.category}</div>
-                        <h4 className="font-serif text-sm text-stone-900 truncate font-light tracking-wide pr-2">{item.product.name}</h4>
-                        
-                        <div className="text-[11px] font-sans text-stone-500 font-light flex items-center gap-4 pt-1">
+                      <div className="grow space-y-1 min-w-0 pr-6" role="group" aria-label="Item details">
+                        <div className="text-[9px] tracking-[0.15em] font-sans uppercase text-stone-400" id={`item-${idx}-category`}>{item.product.category}</div>
+                        <h4 className="font-serif text-sm text-stone-900 truncate font-light tracking-wide pr-2" aria-labelledby={`item-${idx}-category`}>
+                          {item.product.name}
+                        </h4>
+
+                        <div className="text-[11px] font-sans text-stone-500 font-light flex items-center gap-4 pt-1" aria-label="Size and quantity controls">
                           <span>Size: <span className="text-stone-900 font-normal">{item.size}</span></span>
                           
-                          {/* FIXED DYNAMIC QUANTITY CONTROLLER BLOCK */}
-                          <div className="flex items-center border border-stone-200 bg-stone-50/50 rounded-2xs px-1">
+                          <div className="flex items-center border border-stone-200 bg-stone-50/50 rounded-xs px-1">
                             <button 
                               type="button"
-                              // Disable minus if it's already down to 1
+                              aria-label={`Decrease quantity of ${item.product.name}`}
                               disabled={item.quantity <= 1}
                               onClick={() => handleDrawerQtyAdjust(idx, -1)}
                               className="p-1 text-stone-500 hover:text-stone-950 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                             >
-                              <Minus size={10} />
+                              <Minus size={10} aria-hidden="true" />
                             </button>
                             
-                            {/* Displays the actual live quantity number directly */}
-                            <span className="w-6 text-center text-xs text-stone-950 font-medium">
+                            <span className="min-w-6 text-center text-xs text-stone-950 font-medium" aria-live="polite" aria-atomic="true" id={`quantity-display-${idx}`}>
                               {item.quantity}
                             </span>
                             
                             <button 
                               type="button"
-                              // Disable plus if it reaches maximum database stock limits
+                              aria-label={`Increase quantity of ${item.product.name}`}
                               disabled={item.quantity >= maxAvailableStock}
                               onClick={() => handleDrawerQtyAdjust(idx, 1)}
                               className="p-1 text-stone-500 hover:text-stone-950 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                             >
-                              <Plus size={10} />
+                              <Plus size={10} aria-hidden="true" />
                             </button>
                           </div>
                         </div>
 
-                        <div className="font-sans text-xs font-medium text-stone-950 pt-1">
-                          ₹{(item.product.price * item.quantity).toLocaleString()}
+                        <div className="font-sans text-xs font-medium text-stone-950 pt-1" aria-label={`Total price for ${item.product.name}`}>
+                          ₹{(Math.round(getFinalPrice(item.product) * item.quantity)).toLocaleString()}
                         </div>
                       </div>
 
                       <button 
                         type="button"
+                        aria-label={`Remove ${item.product.name} from cart`}
                         disabled={deletingIndex === idx}
                         onClick={() => handleItemRemovalSync(idx, item)}
                         className={`absolute top-3 right-3 transition-colors cursor-pointer ${
@@ -176,21 +180,21 @@ export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, s
                         }`}
                       >
                         {deletingIndex === idx ? (
-                          <Loader2 size={13} className="animate-spin text-stone-500" />
+                          <Loader2 size={13} className="animate-spin text-stone-500" aria-hidden="true" />
                         ) : (
-                          <Trash2 size={14} strokeWidth={1.5} />
+                          <Trash2 size={14} strokeWidth={1.5} aria-hidden="true" />
                         )}
                       </button>
-                    </div>
+                    </li>
                   );
-                })
+                })}
+                </ul>
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-center space-y-2 py-24">
                   <p className="font-serif text-sm text-stone-400 italic">The bag is currently empty.</p>
                   <p className="font-sans text-[10px] tracking-widest uppercase text-stone-400 max-w-xs leading-relaxed">
                     Explore our collection registries to add luxury replicas.
                   </p>
-                  {/* Premium Embedded Call-To-Action Button */}
                 <button
                   onClick={onNavigateToCollection}
                   className="group flex items-center justify-center gap-3 bg-stone-950 text-[#f5f2eb] w-full max-w-60 py-3.5 text-[10px] tracking-[0.2em] uppercase transition-all duration-300 border border-stone-950 hover:bg-transparent hover:text-stone-950 shadow-xs"
@@ -218,8 +222,8 @@ export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, s
               <div className="space-y-2 pt-2">
                 <button
                   onClick={() => {
-                    onClose();            // Step 1: Slide drawer shut smoothly
-                    onCheckoutTrigger();  // Step 2: Swap layout matrix route to 'checkout' string
+                    onClose();            
+                    onCheckoutTrigger();  
                   }}
                   className="w-full bg-stone-950 text-white font-sans text-[10px] tracking-widest uppercase py-3 border border-stone-950 hover:bg-transparent hover:text-stone-950 transition-all duration-300 shadow-sm cursor-pointer"
                 >
