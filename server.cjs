@@ -1,8 +1,8 @@
+require('dotenv').config({ path: '.env.local' });
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
-// Securely pulls your secret key from environment variables on production platforms
-const stripe = require('stripe')(import.meta.env.VITE_STRIPE_SECRET_KEY); 
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY); 
 
 const app = express();
 
