@@ -128,6 +128,7 @@ function CheckoutFormInterior({ cartItems, user, onOrderPlacedSuccess, navigateT
   const [isVerifyingEmail, setIsVerifyingEmail] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [guestSuccessMessage, setGuestSuccessMessage] = useState<string | null>(null);
+  const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
   const [formData, setFormData] = useState(structuralPreFill);
 
   const getFinalPrice = (product: CartItem['product']) => {
@@ -224,7 +225,7 @@ function CheckoutFormInterior({ cartItems, user, onOrderPlacedSuccess, navigateT
     try {
       const structuralPhoneNumberWithCountryPrefix = `+91${formData.phone.replace(/\D/g, '')}`;
 
-      const response = await fetch('http://localhost:5000/api/create-payment-intent', {
+      const response = await fetch(`${API_URL}/api/create-payment-intent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount: totalAmount * 100, email: formData.email })
