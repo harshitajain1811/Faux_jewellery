@@ -356,7 +356,7 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
                         return (
                           <div key={index} className="flex items-center gap-4">
                             <img 
-                              src={productExists ? item.product?.main_image : "/placeholder-precious.jpg"} 
+                              src={productExists ? item.product?.main_image : "/placeholder.jpg"} 
                               alt={productExists ? item.product?.name : ""} 
                               className={`w-12 h-12 object-cover bg-stone-100 rounded-xs border border-stone-200/40 shrink-0 ${
                                 productExists ? 'cursor-pointer hover:opacity-90 transition-opacity' : 'opacity-60'
