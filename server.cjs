@@ -31,6 +31,7 @@ app.use(express.static(path.join(__dirname, 'dist')));
 // Fallback routing logic to ensure React Router / View transitions don't break on page refresh
 app.get('/*fallback', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  res.send('Aura Jewellery API Server Running Successfully');
 });
 
 const PORT = process.env.PORT || 5000;

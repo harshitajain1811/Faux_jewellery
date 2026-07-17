@@ -422,17 +422,17 @@ export default function CollectionList({ initialCategory, navigateToView }: Coll
                     className="group cursor-pointer bg-white p-3 border border-stone-200/20 hover:border-stone-200/80 shadow-xs transition-all duration-300 rounded-sm relative">
                     
                     <div className="absolute top-5 left-5 z-10 flex flex-col gap-1 pointer-events-none">
-                      {product.is_featured && sortBy === 'featured' && (
+                      {product.is_featured && (
                         <span className="bg-amber-800 text-white text-[8px] font-sans font-semibold tracking-widest uppercase px-2 py-0.5 rounded-xs shadow-md">
                           FEATURED
                         </span>
                       )}
-                      {product.is_new && sortBy === 'new' && (
+                      {product.is_new && (
                         <span className="bg-stone-950 text-white text-[8px] font-sans font-semibold tracking-widest uppercase px-2 py-0.5 rounded-xs shadow-md">
                           NEW
                         </span>
                       )}
-                      {product.is_most_selling && sortBy === 'most_selling' && (
+                      {product.is_most_selling && (
                         <span className="bg-[#c5a880] text-white text-[8px] font-sans font-semibold tracking-widest uppercase px-2 py-0.5 rounded-xs shadow-md">
                           MOST SELLING
                         </span>
@@ -466,7 +466,7 @@ export default function CollectionList({ initialCategory, navigateToView }: Coll
                         </div>
 
                         <span className="text-[9px] tracking-wider uppercase text-stone-400 group-hover:text-stone-950 flex items-center gap-1">
-                          Acquire <ArrowRight size={10} />
+                          View Product <ArrowRight size={10} />
                         </span>
                       </div>
                     </div>

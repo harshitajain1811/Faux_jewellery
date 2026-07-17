@@ -342,7 +342,8 @@ useEffect(() => {
 
   const rotationShowcase = useMemo(() => {
     if (products.length === 0) return null;
-    const items = Array.from(new Set(products.map(p => p.category).filter(Boolean)));
+    const items = Array.from(new Set(products.map(p => p.category).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b));
     if (items.length === 0) return null;
 
     const currentTimestamp = Date.now();

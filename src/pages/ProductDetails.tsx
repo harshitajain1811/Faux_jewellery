@@ -527,7 +527,7 @@ export default function ProductDetails({ product, wishlist, user, cartItems, onT
                   <h4 className="font-serif text-sm text-stone-900 truncate font-light tracking-wide">{item.name}</h4>
                   <div className="pt-2 flex justify-between items-center text-xs font-sans mt-2 border-t border-stone-100/60">
                     <span className="text-stone-950 font-medium">₹{item.price.toLocaleString()}</span>
-                    <span className="text-[9px] tracking-[0.15em] uppercase text-[#c5a880]">Explore</span>
+                    <span className="text-[9px] tracking-[0.15em] uppercase text-[#c5a880]">View Product</span>
                   </div>
                 </div>
               </div>
