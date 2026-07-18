@@ -196,10 +196,10 @@ export default function TrackOrder({ initialOrderId, initialToken }: TrackOrderP
             {/* C. LOCKED STATUS CAPTION DISPLAY */}
             {['shipped', 'cancelled', 'return_requested', 'returned'].includes(order.status?.toLowerCase()) && (
               <p className="text-[10px] font-sans italic text-stone-400 select-none py-1">
-                {order.status === 'shipped' && "Order is in transit with carrier. Options locked."}
+                {order.status === 'shipped' && "Order is in transit with carrier."}
                 {order.status === 'cancelled' && "This transaction order has been cancelled."}
-                {order.status === 'return_requested' && "Return processing request is pending managerial review."}
-                {order.status === 'returned' && "Return lifecycle finalized. Restock complete."}
+                {order.status === 'return_requested' && "Return processing request is pending for review."}
+                {order.status === 'returned' && "Return finalized. You'll receive refund within 4-5 business working days."}
               </p>
             )}
 

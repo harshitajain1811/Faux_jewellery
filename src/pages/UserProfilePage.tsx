@@ -28,7 +28,7 @@ interface Order {
   items: OrderItem[];
   total_paid: number;
   delivery_date: Date;
-  status: 'pending' | 'shipped' | 'delivered' | 'cancelled' | 'return_requested' | 'returned';
+  status: 'pending' | 'shipped' | 'delivered' | 'cancelled' | 'return_requested' | 'return_accepted';
 }
 
 export default function UserProfilePage({ user, navigateToView }: UserProfileProps) {
@@ -340,7 +340,7 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
                         ord.status === 'delivered' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                         ord.status === 'cancelled' ? 'bg-red-50 text-red-600 border-red-200' :
                         ord.status === 'return_requested' ? 'bg-purple-50 text-purple-700 border-purple-200' :
-                        ord.status === 'returned' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                        ord.status === 'return_accepted' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                         'bg-blue-50 text-blue-700 border-blue-200'
                       }`}>
                         {ord.status === 'return_requested' ? 'Return Requested' : ord.status || 'pending'}
@@ -444,12 +444,12 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
                         )}
 
                         {/* C. LOCKED STATUS CAPTION DISPLAY */}
-                        {['shipped', 'cancelled', 'return_requested', 'returned', 'delivered'].includes(ord.status?.toLowerCase()) && (
+                        {['shipped', 'cancelled', 'return_requested', 'return_accepted', 'delivered'].includes(ord.status?.toLowerCase()) && (
                           <p className="text-[10px] font-sans italic text-stone-400 select-none py-1">
-                            {ord.status === 'shipped' && "Order is in transit with carrier. Options locked."}
+                            {ord.status === 'shipped' && "Order is in transit with carrier."}
                             {ord.status === 'cancelled' && "This transaction order has been cancelled."}
-                            {ord.status === 'return_requested' && "Return processing request is pending managerial review."}
-                            {ord.status === 'returned' && "Return lifecycle finalized. Restock complete."}
+                            {ord.status === 'return_requested' && "Return processing request is pending for review."}
+                            {ord.status === 'return_accepted' && "Return finalized. You'll receive refund within 4-5 business working days."}
                             {ord.status === 'delivered' && !isWithinReturnWindow() && " Return period has expired."}
                           </p>
                         )}

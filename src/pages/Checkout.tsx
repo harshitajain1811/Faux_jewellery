@@ -264,7 +264,8 @@ function CheckoutFormInterior({ cartItems, user, onOrderPlacedSuccess, navigateT
               postal_code: formData.postalCode.trim()
             },
             total_paid: totalAmount,
-            stripe_payment_id: paymentIntent.id
+            stripe_payment_id: paymentIntent.id,
+            shipping_fee: insuranceAndShipping
           }])
           .select('id, guest_token, total_paid, user_email')
           .single();

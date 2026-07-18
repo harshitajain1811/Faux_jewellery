@@ -507,7 +507,7 @@ const fetchOrders = async (status = 'ALL', days = 'ALL') => {
                 <option value="shipped">Shipped</option>
                 <option value="delivered">Delivered</option>
                 <option value="return_requested">Return Requested</option>
-                <option value="returned">Returned</option>
+                <option value="return_accepted">Return Accepted</option>
                 <option value="cancelled">Cancelled</option>
               </select>
               <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-stone-400 text-[8px]">▼</div>
@@ -671,7 +671,7 @@ const fetchOrders = async (status = 'ALL', days = 'ALL') => {
                                 <span className={`px-2 py-0.5 rounded-xs text-[10px] font-medium uppercase border tracking-wider ${
                                   ord.status === 'delivered' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                                   ord.status === 'cancelled' ? 'bg-red-50 text-red-600 border-red-200' :
-                                  ord.status === 'returned' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                  ord.status === 'return_accepted' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                                   ord.status === 'return_requested' ? 'bg-purple-50 text-purple-700 border-purple-200' :
                                   ord.status === 'shipped' ? 'bg-blue-50 text-blue-700 border-blue-200' :
                                   'bg-stone-100 text-stone-600 border-stone-200'
@@ -708,7 +708,7 @@ const fetchOrders = async (status = 'ALL', days = 'ALL') => {
                                             { id: 'pending', label: 'Pending' },
                                             { id: 'shipped', label: 'Shipped' },
                                             { id: 'delivered', label: 'Delivered' },
-                                            { id: 'returned', label: 'Returned' },
+                                            { id: 'return_accepted', label: 'Return Accepted' },
                                             { id: 'cancelled', label: 'Cancelled' }
                                           ].map((statusOption) => (
                                             <button

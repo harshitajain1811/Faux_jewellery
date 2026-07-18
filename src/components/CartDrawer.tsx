@@ -215,7 +215,7 @@ export default function CartDrawer({ isOpen, onClose, cartItems, onRemoveItem, s
                   <span className="text-stone-950 font-medium">₹{totalPrice.toLocaleString()}</span>
                 </div>
                 <p className="text-[10px] text-stone-400 leading-relaxed tracking-wide">
-                  Shipping logistics and regulatory surcharges are determined during secure authorization steps next.
+                  Shipping is free for orders above 5000. Other regulatory surcharges/taxes are determined during next steps.
                 </p>
               </div>
 
