@@ -10,7 +10,7 @@ export default function ReturnAndRefund() {
       <section className="space-y-4">
         <h3 className="text-lg text-stone-900 font-normal">01. The Return Window</h3>
         <p className="text-sm tracking-wide">
-          We offer a complimentary 14-day return window from the timestamp of delivery. To maintain eligibility for an exchange or refund credit, your jewelry piece must remain completely unworn, nested inside its original anti-tarnish velvet pouch, accompanied by all intact aesthetic seals.
+          We offer a complimentary 7-day return window from the timestamp of delivery. To maintain eligibility for an exchange or refund credit, your jewelry piece must remain completely unworn, nested inside its original anti-tarnish velvet pouch, accompanied by all intact aesthetic seals.
         </p>
       </section>
 
@@ -18,6 +18,13 @@ export default function ReturnAndRefund() {
         <h3 className="text-lg text-stone-900 font-normal">02. Processing Settlement</h3>
         <p className="text-sm tracking-wide">
           Once your return package undergoes physical quality inspection at our atelier hub, your refund will be finalized within 5-7 banking cycles directly back to your secure settlement gateway account.
+        </p>
+      </section>
+
+      <section className="space-y-4">
+        <h3 className="text-lg text-stone-900 font-normal">03. Non-refundable Fees</h3>
+        <p className="text-sm tracking-wide">
+          The refundable amount excludes shipping fee if any applied during your checkout process.
         </p>
       </section>
     </main>

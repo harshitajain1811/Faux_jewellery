@@ -10,14 +10,21 @@ export default function ShippingDelivery() {
       <section className="space-y-4">
         <h3 className="text-lg text-stone-900 font-normal">01. Insured Courier Transport</h3>
         <p className="text-sm tracking-wide">
-          All [Aura Jewellery] allocations are processed within 24–48 tracking hours. We dispatch our items via premium, insured ground and air couriers to guarantee the complete structural protection of your parcel.
+          All [Aura Jewellery] allocations are processed within 24-48 tracking hours. We dispatch our items via premium, insured ground and air couriers to guarantee the complete structural protection of your parcel.
         </p>
       </section>
 
       <section className="space-y-4">
         <h3 className="text-lg text-stone-900 font-normal">02. Timeline & Signatures</h3>
         <p className="text-sm tracking-wide">
-          Domestic destinations take roughly 3–5 operational days, while international transfers arrive within 7–10 days. Due to the high value of custom jewelry configurations, a secure signature registry is required upon parcel handover.
+          Domestic destinations take roughly 3-5 operational days, while international transfers arrive within 7-10 days. Due to the high value of custom jewelry configurations, a secure signature registry is required upon parcel handover.
+        </p>
+      </section>
+
+      <section className="space-y-4">
+        <h3 className="text-lg text-stone-900 font-normal">03. Delivery Charges</h3>
+        <p className="text-sm tracking-wide">
+          Shipping is free for orders above a particular price which can be seen inside cart drawer before checkout process else a varied or fixed amount of shipping fee is applied which is non refundable.
         </p>
       </section>
     </main>

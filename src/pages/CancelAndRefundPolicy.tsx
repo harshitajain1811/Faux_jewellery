@@ -10,7 +10,7 @@ export default function CancellationRefund() {
       <section className="space-y-4">
         <h3 className="text-lg text-stone-900 font-normal">01. Order Cancellation Windows</h3>
         <p className="text-sm tracking-wide">
-          Because our warehouse team acts rapidly to package and seal delicate jewelry settings, orders can only be intercepted or cancelled within **2 hours** of final transaction checkout authorization.
+          Because our warehouse team acts rapidly to package and seal delicate jewelry settings, orders can only be intercepted or cancelled if the product has not been shipped.
         </p>
       </section>
 

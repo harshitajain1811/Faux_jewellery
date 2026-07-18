@@ -71,7 +71,7 @@ export default function TrackOrder({ initialOrderId, initialToken }: TrackOrderP
     try {  
       const { data , error: orderError } = await supabase
         .from('orders')
-        .select('id, created_at, items, total_paid, status')
+        .select('id, created_at, items, total_paid, status, shipping_fee')
         .eq('id', initialOrderId)        
         .eq('guest_token', initialToken) 
         .single();
@@ -190,13 +190,20 @@ export default function TrackOrder({ initialOrderId, initialToken }: TrackOrderP
               <button
                 type="button"
                 disabled={isCurrentlyProcessing || actionLoadingId !== null}
-                onClick={() => setConfirmationModal({
+                onClick={() => {
+                  const shippingFee = order.shipping_fee || 0;
+                  setConfirmationModal({
                   isOpen: true,
                   orderId: initialOrderId,
                   type: 'return',
                   title: 'Request Return Authorization',
-                  message: 'Would you like to initiate a return request for this package window? A manager will audit the items for fulfillment verification.'
-                })}
+                  message: `Would you like to initiate a return request for this package window? A manager will audit the items for fulfillment verification.${
+                    shippingFee > 0 
+                      ? ` Please note that the original delivery charge of ₹${shippingFee} is non-refundable and will be deducted from your final refund settlement.`
+                      : ''
+                  }`
+                });
+                }}
                 className="w-full sm:w-auto text-[10px] uppercase font-sans font-medium tracking-wider px-3 py-1.5 bg-stone-950 text-white hover:bg-stone-800 rounded-2xs cursor-pointer transition-colors disabled:opacity-40 text-center"
               >
                 {isCurrentlyProcessing ? 'Processing...' : 'Request Return'}
@@ -209,7 +216,7 @@ export default function TrackOrder({ initialOrderId, initialToken }: TrackOrderP
                 {order.status === 'shipped' && "Order is in transit with carrier."}
                 {order.status === 'cancelled' && "This transaction order has been cancelled. If any refund it would be transferred to your original payment method within 5-7 business days"}
                 {order.status === 'return_requested' && "Return processing request is pending for review."}
-                {order.status === 'return_accepted' && "Return finalized. You'll receive refund within 5-7 business days."}
+                {order.status === 'return_accepted' && "Return finalized. You'll receive refund within 5-7 business days (Excludes non-refundable delivery charge)."}
                 {order.status === 'delivered' && !isWithinReturnWindow() && " Return period has expired."}
               </p>
             )}

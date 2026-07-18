@@ -28,6 +28,7 @@ interface Order {
   items: OrderItem[];
   total_paid: number;
   delivery_date: Date;
+  shipping_fee: number;
   status: 'pending' | 'shipped' | 'delivered' | 'cancelled' | 'return_requested' | 'return_accepted';
 }
 
@@ -98,7 +99,7 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
 
     const { data: orderData, error: orderError } = await supabase
       .from('orders')
-      .select('id, created_at, items, total_paid, status, delivery_date')
+      .select('id, created_at, items, total_paid, status, delivery_date, shipping_fee')
       .eq('user_id', user.id) 
       .gte('created_at', sixMonthsAgo.toISOString()) 
       .order('created_at', { ascending: false });
@@ -430,13 +431,20 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
                           <button
                             type="button"
                             disabled={isCurrentlyProcessing || actionLoadingId !== null}
-                            onClick={() => setConfirmationModal({
+                            onClick={() => {
+                              const shippingFee = ord.shipping_fee || 0;
+                              setConfirmationModal({
                               isOpen: true,
                               orderId: ord.id,
                               type: 'return',
                               title: 'Request Return Authorization',
-                              message: 'Would you like to initiate a return request for this package window? A manager will audit the items for fulfillment verification.'
-                            })}
+                              message: `Would you like to initiate a return request for this package window? A manager will audit the items for fulfillment verification.${
+                                shippingFee > 0 
+                                  ? ` Please note that the original delivery charge of ₹${shippingFee} is non-refundable and will be deducted from your final refund settlement.`
+                                  : ''
+                              }`
+                            });
+                            }}
                             className="w-full sm:w-auto text-[10px] uppercase font-sans font-medium tracking-wider px-3 py-1.5 bg-stone-950 text-white hover:bg-stone-800 rounded-2xs cursor-pointer transition-colors disabled:opacity-40 text-center"
                           >
                             {isCurrentlyProcessing ? 'Processing...' : 'Request Return'}
@@ -449,7 +457,7 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
                             {ord.status === 'shipped' && "Order is in transit with carrier."}
                             {ord.status === 'cancelled' && "This transaction order has been cancelled. If any refund it would be transferred to your original payment method within 5-7 business days"}
                             {ord.status === 'return_requested' && "Return processing request is pending for review."}
-                            {ord.status === 'return_accepted' && "Return finalized. You'll receive refund within 4-5 business working days."}
+                            {ord.status === 'return_accepted' && "Return finalized. You'll receive refund within 5-7 business working days (Excludes non-refundable delivery charge)."}
                             {ord.status === 'delivered' && !isWithinReturnWindow() && " Return period has expired."}
                           </p>
                         )}
