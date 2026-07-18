@@ -83,6 +83,16 @@ export default function TrackOrder({ initialOrderId, initialToken }: TrackOrderP
     }
   };
 
+  const isWithinReturnWindow = () => {
+    if (order.status !== 'delivered') return false;
+
+    const deliveryDate = new Date(order.delivery_date || order.created_at);
+    const today = new Date();
+    const daysSinceDelivery = Math.floor((today.getTime() - deliveryDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    return daysSinceDelivery <= 7;
+  };
+
   if (loading) return <div className="text-center p-12 text-sm text-stone-500">Loading order configuration...</div>;
   if (error) return <div className="text-center p-12 text-sm text-red-500">{error}</div>;
   if (!order) return <div className="text-center p-12 text-sm text-stone-500">No order context supplied.</div>;
@@ -109,7 +119,7 @@ export default function TrackOrder({ initialOrderId, initialToken }: TrackOrderP
             order.status === 'delivered' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
             order.status === 'cancelled' ? 'bg-red-50 text-red-600 border-red-200' :
             order.status === 'return_requested' ? 'bg-purple-50 text-purple-700 border-purple-200' :
-            order.status === 'returned' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+            order.status === 'return_accepted' ? 'bg-amber-50 text-amber-700 border-amber-200' :
             'bg-blue-50 text-blue-700 border-blue-200'
           }`}>
             {order.status}
@@ -194,12 +204,13 @@ export default function TrackOrder({ initialOrderId, initialToken }: TrackOrderP
             )}
 
             {/* C. LOCKED STATUS CAPTION DISPLAY */}
-            {['shipped', 'cancelled', 'return_requested', 'returned'].includes(order.status?.toLowerCase()) && (
+            {['shipped', 'cancelled', 'return_requested', 'return_accepted', 'delivered'].includes(order.status?.toLowerCase()) && (
               <p className="text-[10px] font-sans italic text-stone-400 select-none py-1">
                 {order.status === 'shipped' && "Order is in transit with carrier."}
-                {order.status === 'cancelled' && "This transaction order has been cancelled."}
+                {order.status === 'cancelled' && "This transaction order has been cancelled. If any refund it would be transferred to your original payment method within 5-7 business days"}
                 {order.status === 'return_requested' && "Return processing request is pending for review."}
-                {order.status === 'returned' && "Return finalized. You'll receive refund within 4-5 business working days."}
+                {order.status === 'return_accepted' && "Return finalized. You'll receive refund within 5-7 business days."}
+                {order.status === 'delivered' && !isWithinReturnWindow() && " Return period has expired."}
               </p>
             )}
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShieldCheck, CreditCard, Truck, ArrowLeft, ArrowRight, Lock } from 'lucide-react';
+import { ShieldCheck, CreditCard, Truck, ArrowLeft, ArrowRight, Lock, AlertCircle } from 'lucide-react';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { supabase } from '../lib/supabaseClient';
 import { loadStripe } from '@stripe/stripe-js';
@@ -62,6 +62,7 @@ export default function Checkout(props: CheckoutProps) {
     phone: ''
   });
   const [isProfileLoaded, setIsProfileLoaded] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   
   useEffect(() => {
     async function prefillUserProfile() {
@@ -91,7 +92,7 @@ export default function Checkout(props: CheckoutProps) {
           });
         }
       } catch (err) {
-        console.log("Profile row setup skipped:", err);
+        setProfileError("Unable to sync saved profile details.");
       } finally {
         setIsProfileLoaded(true);
       }
@@ -106,7 +107,7 @@ export default function Checkout(props: CheckoutProps) {
 
   return (
     <Elements stripe={stripePromise}>
-      <CheckoutFormInterior {...props} structuralPreFill={initialFormData} />
+      <CheckoutFormInterior {...props} structuralPreFill={initialFormData} profileError={profileError} setProfileError={setProfileError} />
     </Elements>
   );
 }
@@ -114,9 +115,11 @@ export default function Checkout(props: CheckoutProps) {
 // INTERIOR COMPONENT: Handles the view presentation and interactive inputs
 interface InteriorProps extends CheckoutProps {
   structuralPreFill: any;
+  profileError: string | null;
+  setProfileError: React.Dispatch<React.SetStateAction<string | null>>;
 }
 
-function CheckoutFormInterior({ cartItems, user, onOrderPlacedSuccess, navigateToView, structuralPreFill }: InteriorProps) {
+function CheckoutFormInterior({ cartItems, user, onOrderPlacedSuccess, navigateToView, structuralPreFill, profileError, setProfileError }: InteriorProps) {
   const stripe = useStripe();
   const elements = useElements();
 
@@ -368,6 +371,21 @@ function CheckoutFormInterior({ cartItems, user, onOrderPlacedSuccess, navigateT
                 <Truck size={14} />
                 <h3 className="text-[10px] font-sans tracking-[0.2em] uppercase font-medium text-stone-900">Delivery Logistics</h3>
               </div>
+
+              {profileError && (
+                <div className="mb-6 p-4 border border-red-200 bg-red-50/50 rounded flex items-start gap-3 text-stone-700">
+                  <AlertCircle size={16} className="text-red-600 mt-0.5 shrink-0" strokeWidth={2} />
+                  <div className="font-sans text-xs font-light leading-relaxed">
+                    <span className="font-medium text-red-800">Profile Sync Issue:</span> {profileError}
+                  </div>
+                  <button 
+                    onClick={() => setProfileError(null)} 
+                    className="ml-auto text-xs font-sans text-stone-400 hover:text-stone-600 transition-colors uppercase tracking-wider pl-2"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
               
               <div className="space-y-1">
                 <label className="text-[9px] font-sans tracking-wider uppercase text-stone-400">Email Address</label>

@@ -431,7 +431,6 @@ useEffect(() => {
 
       if (error) throw error;
       setSyncError(null);
-      console.log("Global inventory allocations synced to cloud database.");
     } catch (err: any) {
       console.error("Database sync failed:", err);
       setSyncError(err.message || "Failed to sync your cart.");

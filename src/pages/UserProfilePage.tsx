@@ -447,7 +447,7 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
                         {['shipped', 'cancelled', 'return_requested', 'return_accepted', 'delivered'].includes(ord.status?.toLowerCase()) && (
                           <p className="text-[10px] font-sans italic text-stone-400 select-none py-1">
                             {ord.status === 'shipped' && "Order is in transit with carrier."}
-                            {ord.status === 'cancelled' && "This transaction order has been cancelled."}
+                            {ord.status === 'cancelled' && "This transaction order has been cancelled. If any refund it would be transferred to your original payment method within 5-7 business days"}
                             {ord.status === 'return_requested' && "Return processing request is pending for review."}
                             {ord.status === 'return_accepted' && "Return finalized. You'll receive refund within 4-5 business working days."}
                             {ord.status === 'delivered' && !isWithinReturnWindow() && " Return period has expired."}
@@ -456,14 +456,12 @@ export default function UserProfilePage({ user, navigateToView }: UserProfilePro
 
                       </div>
                     </div>
-
                   </div>
                 );
               })
             )}
           </div>
         </div>
-
       </div>
       {/* CUSTOM CONFIRMATION ACTION MODAL LAYER */}
       {confirmationModal.isOpen && (

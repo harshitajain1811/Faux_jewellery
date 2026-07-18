@@ -28,12 +28,11 @@ interface AdminDashboardProps {
 }
 
 // Comprehensive Multi-Image Workspace state
-  // We combine existing URLs and newly chosen Files into a single uniform preview array
-  interface ImageItem {
-    id: string;
-    url: string;
-    file: File | null;
-  }
+interface ImageItem {
+  id: string;
+  url: string;
+  file: File | null;
+}
 
 export default function AdminDashboard({ user, navigateToView }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<'ledger' | 'atelier' | 'orders'>('orders');
@@ -82,36 +81,36 @@ export default function AdminDashboard({ user, navigateToView }: AdminDashboardP
   const ordersPerPage = 20;
 
   // Fetch function to load order logs directly from Supabase
-const fetchOrders = async (status = 'ALL', days = 'ALL') => {
-  setOrdersLoading(true);
-  try {
-    let query = supabase
-      .from('orders') 
-      .select('id, user_email, user_details, items, total_paid, status, created_at')
-      .order('created_at', { ascending: false })
-      .limit(500); // Limit to 500 recent orders for performance
+  const fetchOrders = async (status = 'ALL', days = 'ALL') => {
+    setOrdersLoading(true);
+    try {
+      let query = supabase
+        .from('orders') 
+        .select('id, user_email, user_details, items, total_paid, status, created_at')
+        .order('created_at', { ascending: false })
+        .limit(500); // Limit to 500 recent orders for performance
 
-    if (status !== 'ALL') {
-      query = query.eq('status', status);
-    }
-    if (days !== 'ALL') {
-      const cutoff = new Date(Date.now() - parseInt(days) * 864e5).toISOString();
-      query = query.gte('created_at', cutoff);
-    }
+      if (status !== 'ALL') {
+        query = query.eq('status', status);
+      }
+      if (days !== 'ALL') {
+        const cutoff = new Date(Date.now() - parseInt(days) * 864e5).toISOString();
+        query = query.gte('created_at', cutoff);
+      }
 
-    const { data, error } = await query;
+      const { data, error } = await query;
 
-    if (!error && data) {
-      setOrders(data);
-    } else if (error) {
-      console.error("Error pulling history logs:", error.message);
+      if (!error && data) {
+        setOrders(data);
+      } else if (error) {
+        console.error("Error pulling history logs:", error.message);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setOrdersLoading(false);
     }
-  } catch (err) {
-    console.error(err);
-  } finally {
-    setOrdersLoading(false);
-  }
-};
+  };
 
   // Synchronize database loads when shifting tabs
   useEffect(() => {
@@ -215,7 +214,6 @@ const fetchOrders = async (status = 'ALL', days = 'ALL') => {
     }
   };
 
-  // --- Drag and Drop Receivers ---
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -293,14 +291,12 @@ const fetchOrders = async (status = 'ALL', days = 'ALL') => {
     const absoluteCategory = productForm.category === 'ADD_NEW' ? productForm.newCategory : productForm.category;
     const absolutePolish = productForm.polish === 'ADD_NEW' ? productForm.newPolish : productForm.polish;
 
-    //Identify the active primary image item, positioning it first in line
     const sortedWorkspace = [...imageWorkspace].sort((a, b) => {
       if (a.id === primaryImageId) return -1;
       if (b.id === primaryImageId) return 1;
       return 0;
     });
 
-    //Process image assets (Preserve URLs or upload fresh File payloads)
     const totalUploadedUrls: string[] = [];
     for (const item of sortedWorkspace) {
       if (item.file) {
@@ -308,7 +304,6 @@ const fetchOrders = async (status = 'ALL', days = 'ALL') => {
         const fileName = `${Math.random()}-${Date.now()}.${fileExt}`;
         const filePath = `vault-inventory/${fileName}`;
 
-        // Attempting transmission block to Supabase Storage
         const { error: uploadError } = await supabase.storage
           .from('product-assets')
           .upload(filePath, item.file);
@@ -320,7 +315,6 @@ const fetchOrders = async (status = 'ALL', days = 'ALL') => {
         const { data } = supabase.storage.from('product-assets').getPublicUrl(filePath);
         if (data?.publicUrl) totalUploadedUrls.push(data.publicUrl);
       } else {
-        // Carry forward pre-existing static URLs safely if editing
         totalUploadedUrls.push(item.url);
       }
     }
@@ -328,7 +322,7 @@ const fetchOrders = async (status = 'ALL', days = 'ALL') => {
     const primaryMainImage = totalUploadedUrls[0] || '';
     const supportingSubImages = totalUploadedUrls.slice(1);
 
-    // 4. Transform sizing matrix structure fields
+    // Transform sizing matrix structure fields
     const finalStockMap: Record<string, number> = {};
     if (hasSizes) {
       sizeVariants.forEach(v => { 
@@ -354,9 +348,6 @@ const fetchOrders = async (status = 'ALL', days = 'ALL') => {
       size_stock: finalStockMap
     };
 
-    console.log("Transmitting payload bundle to Supabase database:", payload);
-
-    // 6. Select operational query track (Insert vs Overwrite)
     if (editingProductId) {
       const { error } = await supabase.from('products').update(payload).eq('id', editingProductId);
       if (error) throw error;
@@ -367,7 +358,6 @@ const fetchOrders = async (status = 'ALL', days = 'ALL') => {
       setStatusMessage("Product added to database!");
     }
 
-    // Reset interface variables smoothly on completion
     resetTimerRef.current = setTimeout(() => {
       resetDashboardWorkflow();
     }, 1500);
@@ -401,7 +391,6 @@ const fetchOrders = async (status = 'ALL', days = 'ALL') => {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       
-      // Clear operational local window parameters and escape back to login screen view
       navigateToView('auth', 'All', null, true);
     } catch (err: any) {
       alert(`Logout Failed: ${err.message || err}`);
@@ -621,23 +610,18 @@ const fetchOrders = async (status = 'ALL', days = 'ALL') => {
                                 {itemsList.length > 0 ? (
                                   <div className="flex flex-col gap-2">
                                     {itemsList.map((i: any, idx: number) => {
-                                      // Handle both flattened or deeply nested JSON/Relational structures safely
                                       const imgUrl = i.product?.main_image;
                                       const nameText = i.product?.name || 'Item';
                                       
                                       return (
                                         <div key={idx} className="flex items-center gap-2 group/item">
-                                          {/* Thumbnail Box */}
                                           <div className="w-15 h-15 bg-stone-50 overflow-hidden shrink-0 border border-stone-200/60 rounded-2xs">
                                             {imgUrl ? (
                                               <img 
                                                 src={imgUrl} 
                                                 alt={nameText} 
                                                 className="w-full h-full object-cover"
-                                                onError={(e) => {
-                                                  // Fallback if image path fails to load properly
-                                                  (e.target as HTMLImageElement).src = 'https://placehold.co/100x100?text=No+Img';
-                                                }}
+                                                onError={(e) => { e.currentTarget.src = '/placeholder.jpg'; }}
                                               />
                                             ) : (
                                               <div className="w-full h-full flex items-center justify-center bg-stone-100 text-[8px] text-stone-400">
@@ -666,7 +650,7 @@ const fetchOrders = async (status = 'ALL', days = 'ALL') => {
                                 ₹{ord.total_paid?.toLocaleString('en-IN')}
                               </td>
                               
-                              {/* Fulfillment Status Labels Matrix badge styling rendering options */}
+                              {/* Fulfillment Status Labels badge styling */}
                               <td className="p-4 font-sans">
                                 <span className={`px-2 py-0.5 rounded-xs text-[10px] font-medium uppercase border tracking-wider ${
                                   ord.status === 'delivered' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
@@ -753,7 +737,7 @@ const fetchOrders = async (status = 'ALL', days = 'ALL') => {
                   </table>
                 </div>
 
-                {/* Pagination Controls matrix panel board segment */}
+                {/* Pagination Controls */}
                 {totalOrdersPages > 1 && (
                   <div className="flex flex-col sm:flex-row gap-y-2.5 items-center justify-between border border-t-0 border-stone-200/80 bg-stone-50/50 px-4 py-3 rounded-b-xs select-none">
                     <div className="text-[11px] text-stone-500 font-sans">
@@ -826,7 +810,6 @@ const fetchOrders = async (status = 'ALL', days = 'ALL') => {
                   <option key={cat} value={cat}>{cat}</option>
                 ))}
               </select>
-              {/* Clean, absolute positioned minimal chevron dropdown element indicator */}
               <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-stone-400 text-[8px] tracking-tighter">
                 ▼
               </div>
@@ -897,45 +880,45 @@ const fetchOrders = async (status = 'ALL', days = 'ALL') => {
           </div>
 
           {/* Table Display Box Container Ends Above... Now Pagination Controls: */}
-    {totalPages > 1 && (
-      <div className="flex flex-col sm:flex-row gap-y-2.5 items-center justify-between border border-t-0 border-stone-200/80 bg-stone-50/50 px-4 py-3 rounded-b-xs select-none">
-        
-        {/* Left Side: Summary Metrics */}
-        <div className="text-[11px] text-stone-500 font-sans">
-          Showing <span className="font-medium text-stone-900">{((currentPage - 1) * itemsPerPage) + 1}</span> to{' '}
-          <span className="font-medium text-stone-900">
-            {Math.min(currentPage * itemsPerPage, filteredProducts.length)}
-          </span>{' '}
-          of <span className="font-medium text-stone-900">{filteredProducts.length}</span> luxury masterworks
-        </div>
+          {totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row gap-y-2.5 items-center justify-between border border-t-0 border-stone-200/80 bg-stone-50/50 px-4 py-3 rounded-b-xs select-none">
+              
+              {/* Left Side: Summary Metrics */}
+              <div className="text-[11px] text-stone-500 font-sans">
+                Showing <span className="font-medium text-stone-900">{((currentPage - 1) * itemsPerPage) + 1}</span> to{' '}
+                <span className="font-medium text-stone-900">
+                  {Math.min(currentPage * itemsPerPage, filteredProducts.length)}
+                </span>{' '}
+                of <span className="font-medium text-stone-900">{filteredProducts.length}</span> luxury masterworks
+              </div>
 
-        {/* Right Side: Directional Navigation Controls */}
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled={currentPage === 1}
-            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-            className="px-3 py-1.5 border border-stone-200 bg-white rounded-2xs text-[11px] font-medium tracking-wide text-stone-600 hover:text-stone-950 hover:border-stone-400 disabled:opacity-40 disabled:hover:text-stone-600 disabled:hover:border-stone-200 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center gap-1"
-          >
-            ← Previous
-          </button>
-          
-          <div className="text-[11px] font-sans px-2 text-stone-400">
-            Page <span className="text-stone-950 font-medium">{currentPage}</span> of {totalPages}
-          </div>
+              {/* Right Side: Directional Navigation Controls */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  className="px-3 py-1.5 border border-stone-200 bg-white rounded-2xs text-[11px] font-medium tracking-wide text-stone-600 hover:text-stone-950 hover:border-stone-400 disabled:opacity-40 disabled:hover:text-stone-600 disabled:hover:border-stone-200 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  ← Previous
+                </button>
+                
+                <div className="text-[11px] font-sans px-2 text-stone-400">
+                  Page <span className="text-stone-950 font-medium">{currentPage}</span> of {totalPages}
+                </div>
 
-          <button
-            type="button"
-            disabled={currentPage === totalPages}
-            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-            className="px-3 py-1.5 border border-stone-200 bg-white rounded-2xs text-[11px] font-medium tracking-wide text-stone-600 hover:text-stone-950 hover:border-stone-400 disabled:opacity-40 disabled:hover:text-stone-600 disabled:hover:border-stone-200 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center gap-1"
-          >
-            Next →
-          </button>
-        </div>
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  className="px-3 py-1.5 border border-stone-200 bg-white rounded-2xs text-[11px] font-medium tracking-wide text-stone-600 hover:text-stone-950 hover:border-stone-400 disabled:opacity-40 disabled:hover:text-stone-600 disabled:hover:border-stone-200 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  Next →
+                </button>
+              </div>
 
-      </div>
-    )}
+            </div>
+          )}
         </div>
       )}
 
@@ -957,7 +940,6 @@ const fetchOrders = async (status = 'ALL', days = 'ALL') => {
               </div>
             </div>
 
-            {/* Ingestion Dropdown Sets */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-1">
                 <label className="text-[10px] tracking-wider uppercase text-stone-500">Valuation (₹ INR)</label>
