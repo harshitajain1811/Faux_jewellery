@@ -477,7 +477,7 @@ export default function AdminDashboard({ user, navigateToView }: AdminDashboardP
               <Search size={14} className="absolute left-3.5 text-stone-400" />
               <input 
                 type="text" 
-                placeholder="Search by Order ID, Client Email, or Customer Name..." 
+                placeholder="Search by Order ID or Client Email..." 
                 value={orderSearchQuery} 
                 onChange={(e) => { setOrderSearchQuery(e.target.value); setOrdersCurrentPage(1); }} 
                 className="w-full bg-stone-50 border border-stone-200 pl-10 pr-4 py-2.5 text-xs rounded-xs outline-none focus:border-stone-950 focus:bg-white text-stone-900" 
@@ -530,8 +530,7 @@ export default function AdminDashboard({ user, navigateToView }: AdminDashboardP
               const query = orderSearchQuery.toLowerCase().trim();
               const matchesSearch = query === '' || 
                 ord.id.toLowerCase().includes(query) || 
-                (ord.customer_email || '').toLowerCase().includes(query) ||
-                (ord.customer_name || '').toLowerCase().includes(query);
+                (ord.user_email || '').toLowerCase().includes(query);
 
               // B. Match Status Flag
               const matchesStatus = orderStatusFilter === 'ALL' || ord.status === orderStatusFilter;
